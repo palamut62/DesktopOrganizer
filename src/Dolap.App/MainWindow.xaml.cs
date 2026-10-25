@@ -15,6 +15,7 @@ public partial class MainWindow : Window
 {
     const int HotkeyId = 1;
     readonly CollectionStore _store;
+    bool _closing;
     readonly MainVm _vm = new();
     readonly DispatcherTimer _toastTimer = new(), _dragOpenTimer = new() { Interval = TimeSpan.FromMilliseconds(600) };
     readonly DispatcherTimer _hideTimer = new() { Interval = TimeSpan.FromMilliseconds(150) };
@@ -56,7 +57,7 @@ public partial class MainWindow : Window
             if (_searchOpen) CancelModal();
             if (!ModalOpen && !_dragging) { _quietClose = true; CloseAll(); _quietClose = false; }
         };
-        Scene.ViewChanged += (yaw, pitch) => ApplySettings(Settings with { Yaw = yaw, Pitch = pitch });
+        Scene.ViewChanged += (yaw, pitch) => { if (!_closing) ApplySettings(Settings with { Yaw = yaw, Pitch = pitch }); };
         Scene.ShortcutReordered += (src, target) => DropShortcut(src, target.Model.CategoryId, target.Model.Id);
         Scene.ShortcutMoved += (src, cat) => DropShortcut(src, cat.Model.Id, null);
         Scene.PreviewRequested += ShowPreview;
@@ -158,7 +159,7 @@ public partial class MainWindow : Window
     /// <summary>Son acik cekmeceyi dolaba yazar (tema/konum gibi acilista geri gelir).</summary>
     void SaveOpenState()
     {
-        if (_quietClose || _isolated) return;
+        if (_quietClose || _isolated || _closing) return;
         var open = _vm.Categories.FirstOrDefault(c => c.IsOpen)?.Model.Id;
         if (open == Settings.OpenCategory) return;
         Settings = Settings with { OpenCategory = open };
@@ -544,6 +545,15 @@ public partial class MainWindow : Window
     async void AddShortcut_Click(object s, RoutedEventArgs e) => await EditShortcut(null, Cat(s));
 
     SettingsWindow? _settingsWin;
+    protected override void OnClosed(EventArgs e)
+    {
+        _closing = true;
+        _toastTimer.Stop(); _dragOpenTimer.Stop(); _hideTimer.Stop(); _smartTimer?.Stop();
+        foreach (var id in _watchers.Keys.ToArray()) StopWatcher(id);
+        if (_hwnd != IntPtr.Zero) Native.UnregisterHotKey(_hwnd, HotkeyId);
+        _settingsWin?.Close(); _settingsWin = null;
+        base.OnClosed(e);
+    }
     public void OpenSettings()
     {
         if (_settingsWin is { IsLoaded: true }) { _settingsWin.Activate(); return; }

@@ -24,8 +24,13 @@ public partial class MainWindow
             var catId = id;
             debounce.Tick += (_, _) => { debounce.Stop(); SyncFolder(catId, folder, quiet: true); };
             var w = new FileSystemWatcher(folder) { IncludeSubdirectories = false, NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName };
-            FileSystemEventHandler h = (_, _) => Dispatcher.BeginInvoke(() => { debounce.Stop(); debounce.Start(); });
-            w.Created += h; w.Deleted += h; w.Renamed += (_, _) => Dispatcher.BeginInvoke(() => { debounce.Stop(); debounce.Start(); });
+            void Queue() => Dispatcher.BeginInvoke(() =>
+            {
+                if (_closing || !_watchers.TryGetValue(catId, out var active) || active.Watcher != w) return;
+                debounce.Stop(); debounce.Start();
+            });
+            FileSystemEventHandler h = (_, _) => Queue();
+            w.Created += h; w.Deleted += h; w.Renamed += (_, _) => Queue();
             w.EnableRaisingEvents = true;
             _watchers[id] = (folder, w, debounce);
         }

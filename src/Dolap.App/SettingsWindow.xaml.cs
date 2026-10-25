@@ -247,10 +247,10 @@ public partial class SettingsWindow : Window
         {
             var (c, n) = CollectionStore.PreviewJson(d.FileName);
             _main.ShowCabinet();
-            if (await _main.Choose("Yedekten geri yükle", $"Yedek {c} kategori ve {n} kısayol içeriyor. Mevcut koleksiyonun yerine geçecek (önce otomatik yedeklenir).", "İptal", "Geri yükle") != "Geri yükle") return;
-            _main.Store.ImportJson(d.FileName, Paths.Backups);
-            Host?.CabinetWindows.ToList().ForEach(w => { w.ReloadSettings(); w.Reload(); });
-            DataMsg.Text = "Geri yüklendi.";
+            if (await _main.Choose("Yedekten geri yükle", $"Yedek {c} kategori ve {n} kısayol içeriyor. Mevcut koleksiyonun yerine geçecek (önce otomatik yedeklenir). Çalışma setleri yedekten alınır; otomatik yerleşim geçmişi sıfırlanır.", "İptal", "Geri yükle") != "Geri yükle") return;
+            _main = Host!.ImportCollection(d.FileName, Paths.Backups);
+            _main.OpenSettings(); // New selector binds to the imported cabinet IDs.
+            _main.ShowToast("Koleksiyon ve çalışma setleri geri yüklendi.");
             // Baska bilgisayardan gelen yedek: eksik yollari eslemeyi oner.
             if (_main.Store.FindBroken().Count > 0) await _main.RepairBroken();
         }

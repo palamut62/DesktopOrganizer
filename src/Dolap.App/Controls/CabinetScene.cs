@@ -98,6 +98,7 @@ public sealed class CabinetScene : Grid
 
     public CabinetScene()
     {
+        Unloaded += (_, _) => { CompositionTarget.Rendering -= Tick; _animating = false; _dragRotating = false; };
         ClipToBounds = false;
         _view.ClipToBounds = false;
         // 3B dokular icin mipmap'li yuksek kaliteli filtre: kucultulmus dokuda titreme/bulaniklik azalir.

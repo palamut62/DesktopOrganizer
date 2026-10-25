@@ -25,7 +25,7 @@ public sealed class ShortcutVm(Shortcut model, string categoryName) : Obs
     public string CategoryName { get; set; } = categoryName;
     public string Name => Model.DisplayName;
     /// <summary>Hedefi bulunamayan yerel kisayol (kirik); kartta soluk gosterilir.</summary>
-    public bool Broken { get; } = model.Kind != ShortcutKind.Url && !System.IO.File.Exists(model.SourceLinkPath ?? model.Target) && !System.IO.Directory.Exists(model.SourceLinkPath ?? model.Target);
+    public bool Broken { get; } = ShortcutHealth.IsBroken(model);
     string? _key;
     public string SearchKey => _key ??= TurkishText.Fold($"{Name} {CategoryName} {Model.Target}");
     public string Subtitle => Model.Kind == ShortcutKind.Url ? Model.Target : Model.SourceLinkPath ?? Model.Target;

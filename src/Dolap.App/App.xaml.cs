@@ -141,12 +141,27 @@ public partial class App : Application
 
     void SetTheme(string id) => _wins.ToList().ForEach(w => w.ApplySettings(w.Settings with { ThemeId = id }));
 
-    MainWindow OpenCabinetWindow(Guid id)
+    MainWindow OpenCabinetWindow(Guid id, bool isolated = false)
     {
-        var w = new MainWindow(_store!, cabinetId: id);
+        var w = new MainWindow(_store!, isolated: isolated, cabinetId: id);
         _wins.Add(w);
         w.Show();
+        if (!w.Settings.Design.Visible) w.Hide();
         return w;
+    }
+
+    public MainWindow ImportCollection(string path, string backupDir, bool isolated = false)
+    {
+        _store!.ImportJson(path, backupDir); // Validation/transaction finishes before any window is closed.
+        var previous = _wins.ToArray();
+        _wins.Clear();
+        foreach (var window in previous) window.Close();
+        _shelf?.Close(); _shelf = null;
+        _monitor?.Close(); _monitor = null;
+        AllHidden = false;
+        foreach (var cabinet in _store.GetCabinets()) OpenCabinetWindow(cabinet.Id, isolated);
+        _lastLayout = System.Text.Json.JsonSerializer.Serialize(_store.GetCabinets());
+        return _win!;
     }
 
     /// <summary>Kullanici tepsi/kisayolla hepsini gizledi mi (calisma setindeki gorunurlukten bagimsiz).</summary>

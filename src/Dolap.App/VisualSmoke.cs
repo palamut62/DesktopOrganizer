@@ -24,7 +24,7 @@ internal static class VisualSmoke
         var window = new MainWindow(store, isolated: true);
         window.Loaded += async (_, _) =>
         {
-            try { await window.RunVisualSmoke(output); window.Close(); store.Dispose(); Application.Current.Shutdown(); }
+            try { await window.RunVisualSmoke(output); window.Close(); await ((App)Application.Current).RunRestoreSmoke(output); store.Dispose(); Application.Current.Shutdown(); }
             catch (Exception ex) { File.AppendAllText(Path.Combine(output, "app-smoke.txt"), Environment.NewLine + ex); window.Close(); store.Dispose(); Application.Current.Shutdown(1); }
         };
         window.Show();
@@ -101,7 +101,7 @@ public partial class MainWindow
         Scene.DrawerButtons.ElementAt(1).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Check(!_vm.Categories[1].IsOpen && Scene.DrawerTravel(_vm.Categories[1]) == 0, "Production reduced-motion close is immediate");
         // P2: klasore bagli cekmece; gecici klasor, kullanici verisine dokunmaz.
-        var linked = Path.Combine(output, "bagli-klasor");
+        var linked = Path.Combine(output, "bagli-klasor-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(linked);
         File.WriteAllText(Path.Combine(linked, "bir.txt"), "1"); File.WriteAllText(Path.Combine(linked, "iki.txt"), "2");
         var linkCat = _vm.Categories[3];

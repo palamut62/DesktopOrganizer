@@ -1,5 +1,5 @@
 # DURUM - Masaustu Dolabi
-Guncel: 2026-10-25 | son arac: Claude Code | asama: teslim tamamlandi, iyilestirme yol haritasi
+Guncel: 2026-10-25 | son arac: Codex | dal: main | asama: inceleme duzeltmeleri teslim edildi
 
 ## Proje
 - C# .NET 8 WPF, SQLite. Kullanici onayli stack korunur.
@@ -37,8 +37,8 @@ Guncel: 2026-10-25 | son arac: Claude Code | asama: teslim tamamlandi, iyilestir
 - Onceki gelisim notlari PROJE-REHBER.md icinde tarihsel kayit olarak korundu.
 - GitHub main push dogrulandi: 6cb8354934d7dc85ecc3844ba88f02ff2e13e46d.
 
-## Iyilestirme yol haritasi (tamamlandi)
-Tum maddeler uygulandi (sema v5). Dogrulama: Core 37/37, app-smoke 26/26, visual-check gecti. Gercek fareyle: tepsi surukle-birak, klasor secme ve proje sihirbazi ayrica denenmeli.
+## Iyilestirme yol haritasi (uygulandi)
+Tum maddeler icin kod eklendi (sema v5); son incelemedeki 5 bulgu kaynakta duzeltildi. Dogrulama: Core 37/37, app-smoke 26/26, visual-check gecti. Gercek fareyle: tepsi surukle-birak, klasor secme ve proje sihirbazi ayrica denenmeli.
 - [x] P1 Manyetik hizalama: ekran kenarlari ve diger dolaplara yapisma, tutarli bosluk (Alt ile atla). LayoutSnap + testler.
 - [x] P1 Yerlesimi kilitleme: tasima/dondurme kilidi (Ayarlar > Yerlesim).
 - [x] P2 Klasore bagli cekmece: kategori menusu > Klasore bagla; FileSystemWatcher (800 ms) ust duzeyi yansitir, en fazla 200 oge; dosyalara dokunmaz; sema v4 categories.linked_folder.
@@ -57,6 +57,13 @@ Tum maddeler uygulandi (sema v5). Dogrulama: Core 37/37, app-smoke 26/26, visual
 - [x] Duzen zaman makinesi: dakikada bir degisiklik varsa otomatik an (son 30); Ayarlar > Duzenler > Secili ana geri don (once mevcut hal kaydedilir).
 - [x] Tasinabilir duzen: geri yuklemeden sonra kirik yol varsa onarim acilir; ortak onek onerisiyle toplu yol esleme (RemapPrefix).
 
+## Inceleme duzeltmeleri (Codex, 2026-10-25)
+- 5 bulgu giderildi: yedekten sonra pencereler yeni dolap kimlikleriyle kurulur; eski izleyiciler/zamanlayicilar kapatilir, ayarlar secicisi yenilenir.
+- Yol esleme tam klasor/alt yol sinirini kullanir; kok ve UNC yollarini destekler. linked_folder da ayni transaction icinde eslenir; izleyici Reload ile yenilenir.
+- JSON yedegi adli WorkSets alanini tasir. Eski yedekler okunur; koleksiyon degisiminde eski otomatik gecmis temizlenir (UI onayinda belirtilir).
+- ShortcutHealth hem .lnk dosyasini hem yerel hedefini kontrol eder; shell/web hedeflerini dosya saymaz. Kart ve onarim ayni kurali kullanir.
+- Tekrarli arayuz testi icin bagli-klasor fixture yolu benzersiz yapildi; onceki calismanin dosyalari testi etkilemez.
+- Son dogrulama: derleme 0 hata/uyari, Core 42/42, ana pencere 26/26, geri yukleme 6/6. Release win-x64 kurulum sessizce guncellendi (0.1.0); kurulu EXE 26+6 kontrolu gecti, DLL SHA256 paketle ayni. DB ve eski kurulum yedeklendi; 3 dolap / 9 kategori / 37 kisayol korundu. GitHub Release bulunmuyor; kaynaklar bu teslimat commitinde main dalina aktarilir.
 ## Korunacak kararlar
 - Dosyalara referans veren kisayollar; hedef dosyalara dokunulmaz.
 - Hakkinda: Urun sahibi Umut Celik ve tiklanabilir X/GitHub.

@@ -370,14 +370,26 @@ public sealed class CollectionStore : IDisposable
     // ---- kirik kisayollar ve tasinabilir duzen ----
     /// <summary>Hedefi (ya da .lnk dosyasi) artik bulunmayan yerel kisayollar.</summary>
     public List<Shortcut> FindBroken() => GetShortcuts()
-        .Where(s => s.Kind != ShortcutKind.Url && !File.Exists(s.SourceLinkPath ?? s.Target) && !Directory.Exists(s.SourceLinkPath ?? s.Target))
+        .Where(ShortcutHealth.IsBroken)
         .ToList();
 
     /// <summary>Baska bilgisayardan gelen yollari toplu esler: eski onek -> yeni onek (buyuk/kucuk harf duyarsiz). Etkilenen kisayol sayisi.</summary>
     public int RemapPrefix(string oldPrefix, string newPrefix)
     {
-        if (string.IsNullOrWhiteSpace(oldPrefix)) throw new DolapException("Eski yol öneki boş olamaz.");
-        string? Map(string? p) => p != null && p.StartsWith(oldPrefix, StringComparison.OrdinalIgnoreCase) ? newPrefix + p[oldPrefix.Length..] : p;
+        if (string.IsNullOrWhiteSpace(oldPrefix) || string.IsNullOrWhiteSpace(newPrefix)
+            || !Path.IsPathFullyQualified(oldPrefix) || !Path.IsPathFullyQualified(newPrefix))
+            throw new DolapException("Eski ve yeni konum tam klasör yolu olmalı.");
+        oldPrefix = Path.GetFullPath(oldPrefix).TrimEnd('\\', '/');
+        newPrefix = Path.GetFullPath(newPrefix).TrimEnd('\\', '/');
+        string? Map(string? p)
+        {
+            if (p == null || !Path.IsPathFullyQualified(p)) return p;
+            var normalized = Path.GetFullPath(p).TrimEnd('\\', '/');
+            if (normalized.Equals(oldPrefix, StringComparison.OrdinalIgnoreCase))
+                return newPrefix.EndsWith(':') ? newPrefix + "\\" : newPrefix;
+            return normalized.StartsWith(oldPrefix + "\\", StringComparison.OrdinalIgnoreCase)
+                ? newPrefix + normalized[oldPrefix.Length..] : p;
+        }
         var n = 0;
         Tx(() =>
         {
@@ -388,6 +400,11 @@ public sealed class CollectionStore : IDisposable
                 Exec("UPDATE shortcuts SET target=$t,source_link_path=$l,working_directory=$w WHERE id=$i",
                     ("$i", s.Id.ToString()), ("$t", t), ("$l", l), ("$w", w));
                 n++;
+            }
+            foreach (var c in GetCategories())
+            {
+                var folder = Map(c.LinkedFolder);
+                if (folder != c.LinkedFolder) SetLinkedFolder(c.Id, folder);
             }
         });
         return n;
@@ -455,10 +472,11 @@ public sealed class CollectionStore : IDisposable
         foreach (var old in Directory.GetFiles(dir, "dolap-*.db").OrderByDescending(x => x).Skip(7)) File.Delete(old);
     }
 
-    sealed record Pack(int SchemaVersion, List<Category> Categories, List<Shortcut> Shortcuts, AppSettings Settings, List<Cabinet>? Cabinets = null);
+    sealed record Pack(int SchemaVersion, List<Category> Categories, List<Shortcut> Shortcuts, AppSettings Settings,
+        List<Cabinet>? Cabinets = null, List<LayoutSnapshot>? WorkSets = null);
 
     public void ExportJson(string path) => File.WriteAllText(path,
-        JsonSerializer.Serialize(new Pack(SchemaVersion, GetCategories(), GetShortcuts(), LoadGlobalSettings(), GetCabinets()), Json));
+        JsonSerializer.Serialize(new Pack(SchemaVersion, GetCategories(), GetShortcuts(), LoadGlobalSettings(), GetCabinets(), GetSnapshots(true)), Json));
 
     /// <summary>Paketi dogrular; (kategori, kisayol) sayisini doner. Mevcut veriye dokunmaz.</summary>
     public static (int Categories, int Shortcuts) PreviewJson(string path)
@@ -486,6 +504,11 @@ public sealed class CollectionStore : IDisposable
             || p.Categories.Any(c => !cabIds.Contains(c.CabinetId))
             || p.Shortcuts.Any(s => !ids.Contains(s.CategoryId)))
             throw new DolapException("Yedek icerigi gecersiz.");
+        var sets = p.WorkSets ?? [];
+        if (sets.Any(s => s == null || string.IsNullOrWhiteSpace(s.Name) || s.Cabinets == null || s.Cabinets.Count > MaxCabinets)
+            || sets.Select(s => s.Id).Distinct().Count() != sets.Count
+            || sets.Select(s => s.Name).Distinct().Count() != sets.Count)
+            throw new DolapException("Yedekteki çalışma setleri geçersiz.");
         return p;
     }
 
@@ -496,12 +519,16 @@ public sealed class CollectionStore : IDisposable
         BackupTo(Path.Combine(backupDir, $"oncesi-{DateTime.Now:yyyyMMdd-HHmmss}.db"));
         Tx(() =>
         {
-            Exec("DELETE FROM shortcuts; DELETE FROM categories; DELETE FROM cabinets;");
+            // Replacement import starts a new history; old snapshots refer to another collection.
+            Exec("DELETE FROM shortcuts; DELETE FROM categories; DELETE FROM cabinets; DELETE FROM snapshots;");
             foreach (var c in p.Cabinets!) InsertCabinet(c);
             foreach (var c in p.Categories)
                 Exec("INSERT INTO categories(id,name,icon_key,color,order_index,created_at,updated_at,cabinet_id,linked_folder) VALUES($i,$n,$k,$c,$o,$t,$t,$b,$f)",
                     ("$i", c.Id.ToString()), ("$n", c.Name), ("$k", c.IconKey), ("$c", c.Color), ("$o", c.OrderIndex), ("$t", Now()), ("$b", c.CabinetId.ToString()), ("$f", c.LinkedFolder));
             foreach (var s in p.Shortcuts) Insert(s);
+            foreach (var set in p.WorkSets ?? [])
+                Exec("INSERT INTO snapshots VALUES($i,$n,$t,$d)", ("$i", set.Id.ToString()), ("$n", set.Name),
+                    ("$t", set.CreatedAt.ToString("o")), ("$d", JsonSerializer.Serialize(set.Cabinets)));
             Exec("INSERT INTO settings VALUES('app',$v) ON CONFLICT(key) DO UPDATE SET value=$v", ("$v", JsonSerializer.Serialize(p.Settings)));
         });
     }
