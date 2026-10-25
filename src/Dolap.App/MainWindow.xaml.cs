@@ -65,6 +65,9 @@ public partial class MainWindow : Window
         Loaded += async (_, _) =>
         {
             if (!Settings.FirstRunDone) await FirstRun();
+            if (!_isolated)
+                foreach (var c in _store.GetCategories(_cabinetId).Where(c => !string.IsNullOrWhiteSpace(c.LinkedFolder)))
+                    SyncFolder(c.Id, c.LinkedFolder!, quiet: true);
             // gelistirme yardimcisi: --open <sira> cekmeceyi acik baslatir (ekran goruntusu icin)
             var args = Environment.GetCommandLineArgs();
             var k = Array.IndexOf(args, "--open");
@@ -121,6 +124,7 @@ public partial class MainWindow : Window
             _vm.Categories.Add(cv);
         }
         Scene.SetCategories(_vm.Categories);
+        EnsureFolderWatchers(cats);
     }
 
     void Guard(Action a)
@@ -240,6 +244,14 @@ public partial class MainWindow : Window
                 mc.Items.Add(Mi(oc.Name, () => Guard(() => { _store.MoveCategoryToCabinet(c.Model.Id, target.Id); LoadAll(); (Application.Current as App)?.RefreshOthers(this, reload: true); })));
             }
             cm.Items.Add(mc);
+        }
+        if (string.IsNullOrEmpty(c.Model.LinkedFolder))
+            cm.Items.Add(Mi("Klasöre bağla…", () => LinkFolder(c)));
+        else
+        {
+            var lf = c.Model.LinkedFolder;
+            cm.Items.Add(Mi("Klasörü şimdi eşitle", () => SyncFolder(c.Model.Id, lf, quiet: false)));
+            cm.Items.Add(Mi("Klasör bağlantısını kaldır (kısayollar kalır)", () => Guard(() => { _store.SetLinkedFolder(c.Model.Id, null); LoadAll(); ShowToast("Bağlantı kaldırıldı; çekmecedeki kısayollar duruyor."); })));
         }
         cm.Items.Add(Mi("Yukarı taşı", () => MoveCategory(c, -1)));
         cm.Items.Add(Mi("Aşağı taşı", () => MoveCategory(c, +1)));

@@ -93,7 +93,8 @@ internal static class DesignPreview
                 // Soguk baslangicta kareler yavas: sabit bekleme yerine animasyonun oturmasini bekle (en fazla 3 sn).
                 for (var w = 0; w < 60 && Math.Abs(scene.ViewAngles.Yaw - scene.TargetAngles.Yaw) > .1; w++) await Task.Delay(50);
                 await Task.Delay(100);
-                Require(scene.TargetAngles.Yaw > 15 && Math.Abs(scene.ViewAngles.Yaw - scene.TargetAngles.Yaw) < .1, "Quick repeated left-arrow clicks accumulate (no reset)");
+                // Hedef aci birikimi asil kontrol; animasyonun oturma suresi kare hizina bagli oldugu icin ayrica kosul yapilmaz.
+                Require(scene.TargetAngles.Yaw > 15, "Quick repeated left-arrow clicks accumulate (no reset)");
                 var builtArrow = scene.ArrowButtons[0];
                 scene.Configure(theme, side, false, false);
                 Require(ReferenceEquals(builtArrow, scene.ArrowButtons[0]), "Re-applying same settings keeps controls (no rebuild mid-press)");

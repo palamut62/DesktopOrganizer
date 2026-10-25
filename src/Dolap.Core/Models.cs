@@ -2,7 +2,8 @@ namespace Dolap.Core;
 
 public enum ShortcutKind { App, Lnk, File, Folder, Url }
 
-public sealed record Category(Guid Id, string Name, string IconKey, string Color, int OrderIndex, Guid CabinetId = default);
+/// <summary>LinkedFolder doluysa cekmece o klasorun ust duzey icerigini otomatik yansitir.</summary>
+public sealed record Category(Guid Id, string Name, string IconKey, string Color, int OrderIndex, Guid CabinetId = default, string? LinkedFolder = null);
 
 public sealed record Shortcut(
     Guid Id, Guid CategoryId, string DisplayName, ShortcutKind Kind, string? SourceLinkPath,

@@ -6,7 +6,7 @@ namespace Dolap.Core;
 /// <summary>SQLite saklama + kategori/kisayol is kurallari. Her duzenleme tek islemde (transaction) yazilir.</summary>
 public sealed class CollectionStore : IDisposable
 {
-    public const int MaxCategories = 50, MaxShortcuts = 2000, MaxCabinets = 6, SchemaVersion = 3;
+    public const int MaxCategories = 50, MaxShortcuts = 2000, MaxCabinets = 6, SchemaVersion = 4, MaxLinkedItems = 200;
     static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
     readonly SqliteConnection _db;
@@ -66,11 +66,18 @@ public sealed class CollectionStore : IDisposable
         else if (DbPath != ":memory:")
             BackupTo(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(DbPath))!, "backups", $"sema-v{v}-{DateTime.Now:yyyyMMdd-HHmmss}.db"));
         // v3: dolap basina 3B donus ve son acik cekmece
+        if (v < 3)
+            Tx(() =>
+            {
+                if (v == 2)
+                    Exec("ALTER TABLE cabinets ADD COLUMN yaw REAL NOT NULL DEFAULT 0; ALTER TABLE cabinets ADD COLUMN pitch REAL NOT NULL DEFAULT 0; ALTER TABLE cabinets ADD COLUMN open_category TEXT;");
+                Exec("PRAGMA user_version = 3");
+            });
+        // v4: klasore bagli cekmece
         Tx(() =>
         {
-            if (v == 2)
-                Exec("ALTER TABLE cabinets ADD COLUMN yaw REAL NOT NULL DEFAULT 0; ALTER TABLE cabinets ADD COLUMN pitch REAL NOT NULL DEFAULT 0; ALTER TABLE cabinets ADD COLUMN open_category TEXT;");
-            Exec("PRAGMA user_version = 3");
+            Exec("ALTER TABLE categories ADD COLUMN linked_folder TEXT");
+            Exec("PRAGMA user_version = 4");
         });
     }
 
@@ -114,8 +121,8 @@ public sealed class CollectionStore : IDisposable
 
     // ---- kategoriler ----
     static Category ReadCat(SqliteDataReader r) =>
-        new(Guid.Parse(r.GetString(0)), r.GetString(1), r.GetString(2), r.GetString(3), r.GetInt32(4), Guid.Parse(r.GetString(5)));
-    const string CatCols = "id,name,icon_key,color,order_index,cabinet_id";
+        new(Guid.Parse(r.GetString(0)), r.GetString(1), r.GetString(2), r.GetString(3), r.GetInt32(4), Guid.Parse(r.GetString(5)), r.IsDBNull(6) ? null : r.GetString(6));
+    const string CatCols = "id,name,icon_key,color,order_index,cabinet_id,linked_folder";
 
     /// <summary>cabinetId verilirse yalniz o dolabin kategorileri; yoksa hepsi.</summary>
     public List<Category> GetCategories(Guid? cabinetId = null) => cabinetId is { } c
@@ -133,6 +140,35 @@ public sealed class CollectionStore : IDisposable
         Exec("INSERT INTO categories(id,name,icon_key,color,order_index,created_at,updated_at,cabinet_id) VALUES($i,$n,$k,$c,$o,$t,$t,$b)",
             ("$i", id.ToString()), ("$n", name), ("$k", iconKey), ("$c", color), ("$o", next), ("$t", Now()), ("$b", cab.ToString()));
         return new Category(id, name, iconKey, color, next, cab);
+    }
+
+    public void SetLinkedFolder(Guid categoryId, string? folder) =>
+        Exec("UPDATE categories SET linked_folder=$f, updated_at=$t WHERE id=$i",
+            ("$i", categoryId.ToString()), ("$f", string.IsNullOrWhiteSpace(folder) ? null : folder), ("$t", Now()));
+
+    /// <summary>Bagli klasorun guncel ust duzey ogelerini (taslak) cekmeceye yansitir, tek islemde:
+    /// klasorde olup cekmecede olmayanlar eklenir; o klasorden gelip artik bulunmayanlar cekmeceden cikarilir.
+    /// Kullanicinin elle ekledigi baska konumdaki kisayollara ve hicbir dosyaya dokunulmaz. (eklenen, cikarilan) doner.</summary>
+    public (int Added, int Removed) SyncLinkedFolder(Guid categoryId, string folder, IReadOnlyList<ShortcutDraft> entries)
+    {
+        var added = 0; var removed = 0;
+        Tx(() =>
+        {
+            var root = Path.GetFullPath(folder).TrimEnd('\\') + "\\";
+            static string Src(Shortcut s) => s.SourceLinkPath ?? s.Target;
+            static string Key(string p) => Path.GetFullPath(p).ToLowerInvariant();
+            var existing = GetShortcuts(categoryId)
+                .Where(s => s.Kind != ShortcutKind.Url && Src(s).StartsWith(root, StringComparison.OrdinalIgnoreCase)
+                            && !Src(s)[root.Length..].Contains('\\'))
+                .ToList();
+            var want = entries.Take(MaxLinkedItems).ToDictionary(d => Key(d.SourceLinkPath ?? d.Target), d => d);
+            foreach (var s in existing.Where(s => !want.ContainsKey(Key(Src(s)))))
+            { Exec("DELETE FROM shortcuts WHERE id=$i", ("$i", s.Id.ToString())); removed++; }
+            var have = existing.Select(s => Key(Src(s))).ToHashSet();
+            foreach (var (k, d) in want)
+                if (!have.Contains(k) && AddShortcut(categoryId, d) != null) added++;
+        });
+        return (added, removed);
     }
 
     public void MoveCategoryToCabinet(Guid categoryId, Guid cabinetId)
@@ -376,8 +412,8 @@ public sealed class CollectionStore : IDisposable
             Exec("DELETE FROM shortcuts; DELETE FROM categories; DELETE FROM cabinets;");
             foreach (var c in p.Cabinets!) InsertCabinet(c);
             foreach (var c in p.Categories)
-                Exec("INSERT INTO categories(id,name,icon_key,color,order_index,created_at,updated_at,cabinet_id) VALUES($i,$n,$k,$c,$o,$t,$t,$b)",
-                    ("$i", c.Id.ToString()), ("$n", c.Name), ("$k", c.IconKey), ("$c", c.Color), ("$o", c.OrderIndex), ("$t", Now()), ("$b", c.CabinetId.ToString()));
+                Exec("INSERT INTO categories(id,name,icon_key,color,order_index,created_at,updated_at,cabinet_id,linked_folder) VALUES($i,$n,$k,$c,$o,$t,$t,$b,$f)",
+                    ("$i", c.Id.ToString()), ("$n", c.Name), ("$k", c.IconKey), ("$c", c.Color), ("$o", c.OrderIndex), ("$t", Now()), ("$b", c.CabinetId.ToString()), ("$f", c.LinkedFolder));
             foreach (var s in p.Shortcuts) Insert(s);
             Exec("INSERT INTO settings VALUES('app',$v) ON CONFLICT(key) DO UPDATE SET value=$v", ("$v", JsonSerializer.Serialize(p.Settings)));
         });

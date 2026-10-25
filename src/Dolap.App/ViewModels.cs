@@ -64,7 +64,7 @@ public sealed class CategoryVm(Category model) : Obs
     public string Glyph => Icons.Glyph(Model.IconKey);
     public Brush Fill { get; private set; } = Brushes.Gray;
     public Brush LabelBrush { get; private set; } = Brushes.White;
-    public string Automation => $"{Name} cekmecesi, {Count} oge";
+    public string Automation => $"{Name} cekmecesi, {Count} oge" + (Model.LinkedFolder is { } f ? $", {f} klasorune bagli" : "");
 
     public void Refresh()
     {

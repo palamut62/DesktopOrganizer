@@ -100,6 +100,21 @@ public partial class MainWindow
         OpenOnly(_vm.Categories[1]);
         Scene.DrawerButtons.ElementAt(1).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Check(!_vm.Categories[1].IsOpen && Scene.DrawerTravel(_vm.Categories[1]) == 0, "Production reduced-motion close is immediate");
+        // P2: klasore bagli cekmece; gecici klasor, kullanici verisine dokunmaz.
+        var linked = Path.Combine(output, "bagli-klasor");
+        Directory.CreateDirectory(linked);
+        File.WriteAllText(Path.Combine(linked, "bir.txt"), "1"); File.WriteAllText(Path.Combine(linked, "iki.txt"), "2");
+        var linkCat = _vm.Categories[3];
+        Guard(() => _store.SetLinkedFolder(linkCat.Model.Id, linked));
+        SyncFolder(linkCat.Model.Id, linked, quiet: true);
+        var linkedBefore = _store.GetShortcuts(linkCat.Model.Id).Count;
+        File.WriteAllText(Path.Combine(linked, "uc.txt"), "3");
+        for (var i = 0; i < 40 && _store.GetShortcuts(linkCat.Model.Id).Count == linkedBefore; i++) await Task.Delay(100);
+        Check(_store.GetShortcuts(linkCat.Model.Id).Count == linkedBefore + 1, "Linked folder watcher adds a new file to its drawer");
+        File.Delete(Path.Combine(linked, "bir.txt"));
+        for (var i = 0; i < 40 && _store.GetShortcuts(linkCat.Model.Id).Count == linkedBefore + 1; i++) await Task.Delay(100);
+        Check(_store.GetShortcuts(linkCat.Model.Id).Count == linkedBefore && File.Exists(Path.Combine(linked, "iki.txt")),
+            "Linked folder removes vanished file from drawer and never touches remaining files");
         OpenSettings(); await Task.Delay(150);
         Check(_settingsWin is { IsLoaded: true }, "Production settings window loads with new resource dictionaries");
         Check(_settingsWin!.FindName("RoomStyle") == null && _settingsWin.FindName("WeatherBox") == null,
