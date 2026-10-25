@@ -1,0 +1,15 @@
+bin/
+obj/
+.vs/
+*.user
+Masaustu-Dolabi-PRD-Paketi.zip
+# AI arac dosyalari yayinlanmaz
+CLAUDE.md
+AGENTS.md
+.claude/
+.codex/
+GEMINI.md
+.gemini/
+.cursor/
+.cursorrules
+.specstory/

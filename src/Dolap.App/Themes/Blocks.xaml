@@ -1,0 +1,60 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=mscorlib">
+
+    <sys:Double x:Key="OpenMs">280</sys:Double>
+    <sys:Double x:Key="CloseMs">230</sys:Double>
+    <!-- Kontrollu kucuk esneme: tiklamayi geciktirmez -->
+    <BackEase x:Key="EaseOpen" EasingMode="EaseOut" Amplitude="0.25"/>
+    <CubicEase x:Key="EaseClose" EasingMode="EaseInOut"/>
+
+    <DropShadowEffect x:Key="CabinetShadow" BlurRadius="24" ShadowDepth="7" Direction="300" Opacity="0.55" Color="#FF000820"/>
+
+    <CornerRadius x:Key="CornerTop">12,12,0,0</CornerRadius>
+    <CornerRadius x:Key="CornerBottom">0,0,12,12</CornerRadius>
+    <ImageBrush x:Key="BodyBrush" ImageSource="pack://application:,,,/Assets/block_body.png" TileMode="Tile"
+                Viewport="0,0,240,128" ViewportUnits="Absolute" Stretch="Fill"/>
+    <SolidColorBrush x:Key="BodyEdgeBrush" Color="#FF0A1840"/>
+    <ImageBrush x:Key="TrayBrush" ImageSource="pack://application:,,,/Assets/tray.png" TileMode="Tile"
+                Viewport="0,0,128,128" ViewportUnits="Absolute" Stretch="Fill"/>
+
+    <!-- Ust baglanti dugmeleri (studs): kapagin ustune oturur -->
+    <DataTemplate x:Key="HeaderDecoration">
+        <StackPanel Orientation="Horizontal" VerticalAlignment="Top" Margin="14,-17,0,0">
+            <Image Source="pack://application:,,,/Assets/block_stud.png" Width="34" Height="22" Margin="0,0,14,0" RenderOptions.BitmapScalingMode="HighQuality"/>
+            <Image Source="pack://application:,,,/Assets/block_stud.png" Width="34" Height="22" Margin="0,0,14,0" RenderOptions.BitmapScalingMode="HighQuality"/>
+            <Image Source="pack://application:,,,/Assets/block_stud.png" Width="34" Height="22" RenderOptions.BitmapScalingMode="HighQuality"/>
+        </StackPanel>
+    </DataTemplate>
+
+    <Style x:Key="DrawerFrontStyle" TargetType="Button">
+        <Setter Property="Height" Value="72"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid>
+                        <Border CornerRadius="10" Background="{Binding Fill}"/>
+                        <Image Source="pack://application:,,,/Assets/block_front.png" Stretch="Fill" RenderOptions.BitmapScalingMode="HighQuality"/>
+                        <Grid Margin="14,22,14,0">
+                            <TextBlock Text="{Binding Glyph}" FontFamily="{StaticResource IconFont}" FontSize="19" Foreground="White"
+                                       HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                            <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold" Foreground="White" TextTrimming="CharacterEllipsis"
+                                       VerticalAlignment="Center" Margin="32,0,34,0">
+                                <TextBlock.Effect><DropShadowEffect ShadowDepth="1" BlurRadius="2" Opacity="0.55"/></TextBlock.Effect>
+                            </TextBlock>
+                            <Border HorizontalAlignment="Right" VerticalAlignment="Center" Background="#55000000" CornerRadius="9" MinWidth="20" Padding="5,1">
+                                <TextBlock Text="{Binding Count}" FontSize="11" FontWeight="SemiBold" Foreground="White" HorizontalAlignment="Center"/>
+                            </Border>
+                        </Grid>
+                        <Border x:Name="Hover" CornerRadius="10" Background="#22FFFFFF" Visibility="Collapsed" IsHitTestVisible="False"/>
+                        <Border x:Name="Focus" CornerRadius="10" BorderThickness="2" BorderBrush="White" Visibility="Collapsed"/>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Hover" Property="Visibility" Value="Visible"/></Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Focus" Property="Visibility" Value="Visible"/></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+</ResourceDictionary>

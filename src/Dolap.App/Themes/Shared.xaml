@@ -1,0 +1,97 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+    <SolidColorBrush x:Key="TextBrush" Color="#EEF1F4"/>
+    <SolidColorBrush x:Key="MutedBrush" Color="#9AA3AD"/>
+    <SolidColorBrush x:Key="CardBrush" Color="#F01B1E23"/>
+    <SolidColorBrush x:Key="CardBorderBrush" Color="#FF3A414A"/>
+    <SolidColorBrush x:Key="FieldBrush" Color="#FF0F1215"/>
+    <SolidColorBrush x:Key="AccentBrush" Color="#FF6FB1FF"/>
+    <SolidColorBrush x:Key="ItemHoverBrush" Color="#33FFFFFF"/>
+    <SolidColorBrush x:Key="ItemFocusBrush" Color="#FF6FB1FF"/>
+
+    <!-- Cekmece ikon karti: 56 genis, ikon + en fazla 2 satir etiket -->
+    <Style x:Key="ItemButtonStyle" TargetType="Button">
+        <Setter Property="Width" Value="52"/>
+        <Setter Property="Height" Value="62"/>
+        <Setter Property="Margin" Value="1"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd" CornerRadius="5" Background="Transparent" BorderThickness="2" BorderBrush="Transparent">
+                        <StackPanel HorizontalAlignment="Center" Margin="0,3,0,0">
+                            <Grid Width="34" Height="34">
+                                <TextBlock Text="{Binding Fallback}" FontFamily="{StaticResource IconFont}" FontSize="24"
+                                           Foreground="{DynamicResource MutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <Image Source="{Binding Icon}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
+                            </Grid>
+                            <TextBlock Text="{Binding Name}" FontSize="10" TextWrapping="Wrap" TextAlignment="Center" MaxHeight="26"
+                                       TextTrimming="CharacterEllipsis" Foreground="{TemplateBinding Foreground}" Margin="0,2,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="{DynamicResource ItemHoverBrush}"/></Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource ItemFocusBrush}"/></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="HeaderButtonStyle" TargetType="Button">
+        <Setter Property="Width" Value="30"/>
+        <Setter Property="Height" Value="30"/>
+        <Setter Property="Margin" Value="1,0"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd" CornerRadius="5" Background="Transparent" BorderThickness="2" BorderBrush="Transparent">
+                        <TextBlock Text="{TemplateBinding Content}" FontFamily="{StaticResource IconFont}" FontSize="15"
+                                   Foreground="{TemplateBinding Foreground}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="{DynamicResource ItemHoverBrush}"/></Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource ItemFocusBrush}"/></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="ModalButtonStyle" TargetType="Button">
+        <Setter Property="Padding" Value="14,6"/>
+        <Setter Property="Margin" Value="4,0,0,0"/>
+        <Setter Property="MinWidth" Value="72"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bd" CornerRadius="4" Background="#FF2B323B" BorderThickness="1" BorderBrush="#FF4A525D" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter HorizontalAlignment="Center" TextElement.Foreground="{TemplateBinding Foreground}"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="#FF3A434E"/></Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource ItemFocusBrush}"/></Trigger>
+                        <Trigger Property="IsDefault" Value="True"><Setter TargetName="Bd" Property="Background" Value="#FF2F6FC9"/></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="TextBox">
+        <Setter Property="Background" Value="{StaticResource FieldBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+        <Setter Property="CaretBrush" Value="{StaticResource TextBrush}"/>
+        <Setter Property="BorderBrush" Value="#FF3A414A"/>
+        <Setter Property="Padding" Value="6,4"/>
+    </Style>
+    <Style x:Key="LabelStyle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{StaticResource MutedBrush}"/>
+        <Setter Property="FontSize" Value="11"/>
+        <Setter Property="Margin" Value="0,8,0,2"/>
+    </Style>
+</ResourceDictionary>
