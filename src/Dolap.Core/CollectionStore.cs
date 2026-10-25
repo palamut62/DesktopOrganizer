@@ -6,7 +6,7 @@ namespace Dolap.Core;
 /// <summary>SQLite saklama + kategori/kisayol is kurallari. Her duzenleme tek islemde (transaction) yazilir.</summary>
 public sealed class CollectionStore : IDisposable
 {
-    public const int MaxCategories = 50, MaxShortcuts = 2000, MaxCabinets = 6, SchemaVersion = 4, MaxLinkedItems = 200;
+    public const int MaxCategories = 50, MaxShortcuts = 2000, MaxCabinets = 6, SchemaVersion = 5, MaxLinkedItems = 200, MaxSnapshots = 30;
     static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
 
     readonly SqliteConnection _db;
@@ -53,7 +53,7 @@ public sealed class CollectionStore : IDisposable
                   id TEXT PRIMARY KEY, name TEXT NOT NULL, theme_id TEXT NOT NULL, edge INTEGER NOT NULL, monitor_device TEXT,
                   scale REAL NOT NULL, free_x REAL NOT NULL, free_y REAL NOT NULL, auto_hide INTEGER NOT NULL,
                   always_on_top INTEGER NOT NULL, open_direction INTEGER NOT NULL, order_index INTEGER NOT NULL,
-                  yaw REAL NOT NULL DEFAULT 0, pitch REAL NOT NULL DEFAULT 0, open_category TEXT);
+                  yaw REAL NOT NULL DEFAULT 0, pitch REAL NOT NULL DEFAULT 0, open_category TEXT, design TEXT);
                 ALTER TABLE categories ADD COLUMN cabinet_id TEXT;
                 """);
             var legacy = LoadGlobalSettings(); // v1'de yerlesim ve tema ayarlarda duruyordu
@@ -74,14 +74,25 @@ public sealed class CollectionStore : IDisposable
                 Exec("PRAGMA user_version = 3");
             });
         // v4: klasore bagli cekmece
+        if (v < 4)
+            Tx(() =>
+            {
+                Exec("ALTER TABLE categories ADD COLUMN linked_folder TEXT");
+                Exec("PRAGMA user_version = 4");
+            });
+        // v5: dolap tasarimi, cekmece bolumleri, yerlesim anlik goruntuleri (calisma setleri + gecmis)
         Tx(() =>
         {
-            Exec("ALTER TABLE categories ADD COLUMN linked_folder TEXT");
-            Exec("PRAGMA user_version = 4");
+            if (!HasColumn("cabinets", "design")) Exec("ALTER TABLE cabinets ADD COLUMN design TEXT");
+            if (!HasColumn("shortcuts", "section")) Exec("ALTER TABLE shortcuts ADD COLUMN section TEXT");
+            Exec("CREATE TABLE IF NOT EXISTS snapshots(id TEXT PRIMARY KEY, name TEXT, created_at TEXT NOT NULL, data TEXT NOT NULL)");
+            Exec("PRAGMA user_version = 5");
         });
     }
 
     // ---- yardimcilar ----
+    bool HasColumn(string table, string col) =>
+        Query($"PRAGMA table_info({table})", r => r.GetString(1)).Any(c => c.Equals(col, StringComparison.OrdinalIgnoreCase));
     void Exec(string sql, params (string, object?)[] p)
     {
         lock (_gate) { using var c = Cmd(sql, p); c.ExecuteNonQuery(); }
@@ -205,8 +216,8 @@ public sealed class CollectionStore : IDisposable
     static Shortcut ReadSc(SqliteDataReader r) => new(
         Guid.Parse(r.GetString(0)), Guid.Parse(r.GetString(1)), r.GetString(2), (ShortcutKind)r.GetInt32(3),
         r.IsDBNull(4) ? null : r.GetString(4), r.GetString(5), r.IsDBNull(6) ? null : r.GetString(6),
-        r.IsDBNull(7) ? null : r.GetString(7), r.GetInt32(8));
-    const string ScCols = "id,category_id,display_name,kind,source_link_path,target,arguments,working_directory,order_index";
+        r.IsDBNull(7) ? null : r.GetString(7), r.GetInt32(8), r.IsDBNull(9) ? null : r.GetString(9));
+    const string ScCols = "id,category_id,display_name,kind,source_link_path,target,arguments,working_directory,order_index,section";
 
     public List<Shortcut> GetShortcuts(Guid? categoryId = null) => categoryId is { } c
         ? Query($"SELECT {ScCols} FROM shortcuts WHERE category_id=$c ORDER BY order_index", ReadSc, ("$c", c.ToString()))
@@ -228,9 +239,13 @@ public sealed class CollectionStore : IDisposable
         return s;
     }
 
-    void Insert(Shortcut s) => Exec($"INSERT INTO shortcuts({ScCols}) VALUES($i,$c,$n,$k,$l,$t,$a,$w,$o)",
+    void Insert(Shortcut s) => Exec($"INSERT INTO shortcuts({ScCols}) VALUES($i,$c,$n,$k,$l,$t,$a,$w,$o,$s)",
         ("$i", s.Id.ToString()), ("$c", s.CategoryId.ToString()), ("$n", s.DisplayName), ("$k", (int)s.Kind),
-        ("$l", s.SourceLinkPath), ("$t", s.Target), ("$a", s.Arguments), ("$w", s.WorkingDirectory), ("$o", s.OrderIndex));
+        ("$l", s.SourceLinkPath), ("$t", s.Target), ("$a", s.Arguments), ("$w", s.WorkingDirectory), ("$o", s.OrderIndex), ("$s", s.Section));
+
+    /// <summary>Cekmece ici bolum (alt sekme) adi; bos = bolumsuz.</summary>
+    public void SetSection(Guid id, string? section) =>
+        Exec("UPDATE shortcuts SET section=$s WHERE id=$i", ("$i", id.ToString()), ("$s", string.IsNullOrWhiteSpace(section) ? null : section.Trim()));
 
     public void UpdateShortcut(Guid id, ShortcutDraft d) =>
         Exec("UPDATE shortcuts SET display_name=$n,kind=$k,target=$t,source_link_path=$l,arguments=$a,working_directory=$w WHERE id=$i",
@@ -263,20 +278,25 @@ public sealed class CollectionStore : IDisposable
     static Cabinet ReadCab(SqliteDataReader r) => new(
         Guid.Parse(r.GetString(0)), r.GetString(1), r.GetString(2), (DockEdge)r.GetInt32(3), r.IsDBNull(4) ? null : r.GetString(4),
         r.GetDouble(5), r.GetDouble(6), r.GetDouble(7), r.GetInt32(8) != 0, r.GetInt32(9) != 0, (OpenDirection)r.GetInt32(10), r.GetInt32(11),
-        r.GetDouble(12), r.GetDouble(13), r.IsDBNull(14) ? null : Guid.Parse(r.GetString(14)));
-    const string CabCols = "id,name,theme_id,edge,monitor_device,scale,free_x,free_y,auto_hide,always_on_top,open_direction,order_index,yaw,pitch,open_category";
+        r.GetDouble(12), r.GetDouble(13), r.IsDBNull(14) ? null : Guid.Parse(r.GetString(14)), ReadDesign(r.IsDBNull(15) ? null : r.GetString(15)));
+    const string CabCols = "id,name,theme_id,edge,monitor_device,scale,free_x,free_y,auto_hide,always_on_top,open_direction,order_index,yaw,pitch,open_category,design";
+    static CabinetDesign ReadDesign(string? json)
+    {
+        if (json == null) return new();
+        try { return JsonSerializer.Deserialize<CabinetDesign>(json) ?? new(); } catch (JsonException) { return new(); }
+    }
 
     public List<Cabinet> GetCabinets() => Query($"SELECT {CabCols} FROM cabinets ORDER BY order_index", ReadCab);
     public Guid FirstCabinetId() => Guid.Parse((string)Scalar("SELECT id FROM cabinets ORDER BY order_index LIMIT 1")!);
 
-    void InsertCabinet(Cabinet c) => Exec($"INSERT INTO cabinets({CabCols}) VALUES($i,$n,$t,$e,$m,$s,$x,$y,$a,$o,$d,$r,$w,$p,$c)",
+    void InsertCabinet(Cabinet c) => Exec($"INSERT INTO cabinets({CabCols}) VALUES($i,$n,$t,$e,$m,$s,$x,$y,$a,$o,$d,$r,$w,$p,$c,$g)",
         ("$i", c.Id.ToString()), ("$n", c.Name), ("$t", c.ThemeId), ("$e", (int)c.Edge), ("$m", c.MonitorDevice), ("$s", c.Scale),
         ("$x", c.FreeX), ("$y", c.FreeY), ("$a", c.AutoHide ? 1 : 0), ("$o", c.AlwaysOnTop ? 1 : 0), ("$d", (int)c.OpenDirection), ("$r", c.OrderIndex),
-        ("$w", c.Yaw), ("$p", c.Pitch), ("$c", c.OpenCategory?.ToString()));
+        ("$w", c.Yaw), ("$p", c.Pitch), ("$c", c.OpenCategory?.ToString()), ("$g", JsonSerializer.Serialize(c.Design ?? new())));
 
     static Cabinet FromSettings(Guid id, string name, AppSettings s, int order) => new(id, name, s.ThemeId, s.Edge, s.MonitorDevice,
         Math.Clamp(s.Scale, 0.75, 1.5), Math.Clamp(s.FreeX, 0, 1), Math.Clamp(s.FreeY, 0, 1), s.AutoHide, s.AlwaysOnTop, s.OpenDirection, order,
-        Math.Clamp(s.Yaw, -MaxYaw, MaxYaw), Math.Clamp(s.Pitch, -MaxPitch, MaxPitch), s.OpenCategory);
+        Math.Clamp(s.Yaw, -MaxYaw, MaxYaw), Math.Clamp(s.Pitch, -MaxPitch, MaxPitch), s.OpenCategory, s.Design);
     /// <summary>On yuzdeki kontroller okunur kalsin diye donus sinirli.</summary>
     public const double MaxYaw = 55, MaxPitch = 25;
 
@@ -297,10 +317,10 @@ public sealed class CollectionStore : IDisposable
     {
         c = c with { Name = RequireName(c.Name), Scale = Math.Clamp(c.Scale, 0.75, 1.5), FreeX = Math.Clamp(c.FreeX, 0, 1), FreeY = Math.Clamp(c.FreeY, 0, 1),
             Yaw = Math.Clamp(c.Yaw, -MaxYaw, MaxYaw), Pitch = Math.Clamp(c.Pitch, -MaxPitch, MaxPitch) };
-        Exec("UPDATE cabinets SET name=$n,theme_id=$t,edge=$e,monitor_device=$m,scale=$s,free_x=$x,free_y=$y,auto_hide=$a,always_on_top=$o,open_direction=$d,yaw=$w,pitch=$p,open_category=$c WHERE id=$i",
+        Exec("UPDATE cabinets SET name=$n,theme_id=$t,edge=$e,monitor_device=$m,scale=$s,free_x=$x,free_y=$y,auto_hide=$a,always_on_top=$o,open_direction=$d,yaw=$w,pitch=$p,open_category=$c,design=$g WHERE id=$i",
             ("$i", c.Id.ToString()), ("$n", c.Name), ("$t", c.ThemeId), ("$e", (int)c.Edge), ("$m", c.MonitorDevice), ("$s", c.Scale),
             ("$x", c.FreeX), ("$y", c.FreeY), ("$a", c.AutoHide ? 1 : 0), ("$o", c.AlwaysOnTop ? 1 : 0), ("$d", (int)c.OpenDirection),
-            ("$w", c.Yaw), ("$p", c.Pitch), ("$c", c.OpenCategory?.ToString()));
+            ("$w", c.Yaw), ("$p", c.Pitch), ("$c", c.OpenCategory?.ToString()), ("$g", JsonSerializer.Serialize(c.Design ?? new())));
     }
 
     /// <summary>Dolabi siler; kategoriler (ve kisayollar) moveTo'ya (yoksa ilk kalan dolaba) tasinir, veri silinmez. Son dolap silinemez.</summary>
@@ -311,6 +331,73 @@ public sealed class CollectionStore : IDisposable
         var target = moveTo is { } m && others.Any(c => c.Id == m) ? m : others[0].Id;
         foreach (var cat in GetCategories(id)) MoveCategoryToCabinet(cat.Id, target);
         Exec("DELETE FROM cabinets WHERE id=$i", ("$i", id.ToString()));
+    });
+
+    // ---- yerlesim anlik goruntuleri: calisma setleri (adli) ve zaman makinesi (adsiz, son 30) ----
+    public LayoutSnapshot SaveSnapshot(string? name)
+    {
+        var snap = new LayoutSnapshot(Guid.NewGuid(), string.IsNullOrWhiteSpace(name) ? null : RequireName(name), DateTime.Now, GetCabinets());
+        Tx(() =>
+        {
+            if (snap.Name != null) Exec("DELETE FROM snapshots WHERE name=$n", ("$n", snap.Name)); // ayni adli set guncellenir
+            Exec("INSERT INTO snapshots VALUES($i,$n,$t,$d)", ("$i", snap.Id.ToString()), ("$n", snap.Name), ("$t", snap.CreatedAt.ToString("o")),
+                ("$d", JsonSerializer.Serialize(snap.Cabinets)));
+            Exec($"DELETE FROM snapshots WHERE name IS NULL AND id NOT IN (SELECT id FROM snapshots WHERE name IS NULL ORDER BY created_at DESC LIMIT {MaxSnapshots})");
+        });
+        return snap;
+    }
+
+    /// <summary>named: true = calisma setleri, false = otomatik gecmis; yeniden eskiye.</summary>
+    public List<LayoutSnapshot> GetSnapshots(bool named) =>
+        Query($"SELECT id,name,created_at,data FROM snapshots WHERE name IS {(named ? "NOT " : "")}NULL ORDER BY {(named ? "name" : "created_at DESC")}",
+            r => new LayoutSnapshot(Guid.Parse(r.GetString(0)), r.IsDBNull(1) ? null : r.GetString(1), DateTime.Parse(r.GetString(2), System.Globalization.CultureInfo.InvariantCulture),
+                JsonSerializer.Deserialize<List<Cabinet>>(r.GetString(3)) ?? []));
+
+    /// <summary>Kayitli yerlesimi uygular: hala var olan dolaplarin konum/tema/aci/tasarim/gorunurlugu geri gelir.
+    /// Kategoriler ve kisayollar degismez. Uygulanan dolap sayisini doner.</summary>
+    public int RestoreSnapshot(Guid id)
+    {
+        var snap = GetSnapshots(true).Concat(GetSnapshots(false)).FirstOrDefault(s => s.Id == id)
+                   ?? throw new DolapException("Kayıtlı yerleşim bulunamadı.");
+        var existing = GetCabinets().Select(c => c.Id).ToHashSet();
+        var n = 0;
+        Tx(() => { foreach (var c in snap.Cabinets.Where(c => existing.Contains(c.Id))) { UpdateCabinet(c); n++; } });
+        return n;
+    }
+
+    public void DeleteSnapshot(Guid id) => Exec("DELETE FROM snapshots WHERE id=$i", ("$i", id.ToString()));
+
+    // ---- kirik kisayollar ve tasinabilir duzen ----
+    /// <summary>Hedefi (ya da .lnk dosyasi) artik bulunmayan yerel kisayollar.</summary>
+    public List<Shortcut> FindBroken() => GetShortcuts()
+        .Where(s => s.Kind != ShortcutKind.Url && !File.Exists(s.SourceLinkPath ?? s.Target) && !Directory.Exists(s.SourceLinkPath ?? s.Target))
+        .ToList();
+
+    /// <summary>Baska bilgisayardan gelen yollari toplu esler: eski onek -> yeni onek (buyuk/kucuk harf duyarsiz). Etkilenen kisayol sayisi.</summary>
+    public int RemapPrefix(string oldPrefix, string newPrefix)
+    {
+        if (string.IsNullOrWhiteSpace(oldPrefix)) throw new DolapException("Eski yol öneki boş olamaz.");
+        string? Map(string? p) => p != null && p.StartsWith(oldPrefix, StringComparison.OrdinalIgnoreCase) ? newPrefix + p[oldPrefix.Length..] : p;
+        var n = 0;
+        Tx(() =>
+        {
+            foreach (var s in GetShortcuts().Where(s => s.Kind != ShortcutKind.Url))
+            {
+                var (t, l, w) = (Map(s.Target), Map(s.SourceLinkPath), Map(s.WorkingDirectory));
+                if (t == s.Target && l == s.SourceLinkPath && w == s.WorkingDirectory) continue;
+                Exec("UPDATE shortcuts SET target=$t,source_link_path=$l,working_directory=$w WHERE id=$i",
+                    ("$i", s.Id.ToString()), ("$t", t), ("$l", l), ("$w", w));
+                n++;
+            }
+        });
+        return n;
+    }
+
+    /// <summary>Akilli cekmece: kategorinin tum icerigini verilen listeyle degistirir (tek islem). Elle ekleme bu cekmecede tutulmaz.</summary>
+    public void ReplaceManaged(Guid categoryId, IReadOnlyList<ShortcutDraft> drafts) => Tx(() =>
+    {
+        Exec("DELETE FROM shortcuts WHERE category_id=$c", ("$c", categoryId.ToString()));
+        foreach (var d in drafts.Take(60)) AddShortcut(categoryId, d);
     });
 
     // ---- ayarlar ----
@@ -331,7 +418,7 @@ public sealed class CollectionStore : IDisposable
         {
             ThemeId = c.ThemeId, Edge = c.Edge, MonitorDevice = c.MonitorDevice, Scale = c.Scale, FreeX = c.FreeX, FreeY = c.FreeY,
             AutoHide = c.AutoHide, AlwaysOnTop = c.AlwaysOnTop, OpenDirection = c.OpenDirection,
-            Yaw = c.Yaw, Pitch = c.Pitch, OpenCategory = c.OpenCategory,
+            Yaw = c.Yaw, Pitch = c.Pitch, OpenCategory = c.OpenCategory, Design = c.Design ?? new(),
         };
     }
 

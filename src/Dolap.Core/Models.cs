@@ -7,7 +7,7 @@ public sealed record Category(Guid Id, string Name, string IconKey, string Color
 
 public sealed record Shortcut(
     Guid Id, Guid CategoryId, string DisplayName, ShortcutKind Kind, string? SourceLinkPath,
-    string Target, string? Arguments, string? WorkingDirectory, int OrderIndex);
+    string Target, string? Arguments, string? WorkingDirectory, int OrderIndex, string? Section = null);
 
 /// <summary>Yeni/duzenlenen kisayol girdisi (kimlik ve sira store tarafindan verilir).</summary>
 public sealed record ShortcutDraft(
@@ -16,6 +16,13 @@ public sealed record ShortcutDraft(
 
 public enum DockEdge { Left, Right, Free }
 
+/// <summary>Dolap tasarimi (dolap basina). "theme": temanin varsayilani.
+/// Handle: theme|bar|knob|notch, Label: theme|plate|plain, Module: standard|slim|wide|double. Visible: calisma setlerinde gizleme.</summary>
+public sealed record CabinetDesign(string? BodyColor = null, string Handle = "theme", string Label = "theme", string Module = "standard", bool Visible = true);
+
+/// <summary>Kaydedilmis yerlesim: adli = calisma seti, adsiz = otomatik gecmis (zaman makinesi).</summary>
+public sealed record LayoutSnapshot(Guid Id, string? Name, DateTime CreatedAt, List<Cabinet> Cabinets);
+
 /// <summary>Cekmecelerin acilma yonu. Auto: kenara gore (sag kenar -> sola acilir).</summary>
 public enum OpenDirection { Auto, Left, Right }
 
@@ -23,7 +30,7 @@ public enum OpenDirection { Auto, Left, Right }
 public sealed record Cabinet(
     Guid Id, string Name, string ThemeId, DockEdge Edge, string? MonitorDevice, double Scale,
     double FreeX, double FreeY, bool AutoHide, bool AlwaysOnTop, OpenDirection OpenDirection, int OrderIndex,
-    double Yaw = 0, double Pitch = 0, Guid? OpenCategory = null);
+    double Yaw = 0, double Pitch = 0, Guid? OpenCategory = null, CabinetDesign? Design = null);
 
 public sealed record AppSettings
 {
@@ -44,6 +51,10 @@ public sealed record AppSettings
     public double Yaw { get; init; }                          // 3B donus (derece), dolap basina
     public double Pitch { get; init; }                        // bakis yuksekligi farki (derece)
     public Guid? OpenCategory { get; init; }                  // son acik cekmece
+    public CabinetDesign Design { get; init; } = new();        // dolap basina tasarim (renk, kulp, etiket, modul)
+    public int SoundVolume { get; init; } = 80;               // 0-100
+    public double MotionScale { get; init; } = 1.0;           // hareket suresi carpani 0.5 (hizli) - 1.6 (yavas)
+    public bool ShowShelf { get; init; }                      // gecici birakma tepsisi penceresi
     public bool ThemedWallpaper { get; init; } = true;   // temaya uygun statik duvar kagidi
     public bool DepthScale { get; init; } = true;         // dikey konuma gore boyut: yukarida kucuk, asagida buyuk
     public bool ShowSystemMonitor { get; init; } = true;  // duvardaki TV: canli sistem monitoru
