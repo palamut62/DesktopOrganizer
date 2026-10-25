@@ -8,6 +8,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Media3D;
+using Dolap.Core;
 
 namespace Dolap.App.Controls;
 
@@ -18,6 +19,21 @@ public sealed class CabinetScene : Grid
     /// <summary>Dunya biriminden DIP'e sabit olcek: kadraj donus icin genisleyince dolap kuculmez, pencere buyur.</summary>
     public const double PixelsPerUnit = 1.2;
     bool _layoutLocked;
+    // ---- tasarim ve modul ----
+    CabinetDesign _design = new();
+    /// <summary>Modul olcegi (x genislik, y yukseklik): ince evrak, genis takim, iki buyuk cekmece.</summary>
+    (double X, double Y) Ms => _design.Module switch { "slim" => (.78, .85), "wide" => (1.3, 1.0), "double" => (1.0, 1.55), _ => (1.0, 1.0) };
+    Point3D Sc(Point3D p) => new(p.X * Ms.X, p.Y * Ms.Y, p.Z);
+    public void SetDesign(CabinetDesign d)
+    {
+        if (d == _design) return;
+        _design = d;
+        if (_built) Rebuild();
+    }
+    /// <summary>Hareket suresi carpani (Ayarlar > Davranis): 0.5 hizli, 1.6 yavas.</summary>
+    public double MotionScale { get; set; } = 1.0;
+    /// <summary>Ses seviyesi 0-100.</summary>
+    public int SoundVolume { get; set; } = 80;
     public bool LayoutLocked
     {
         get => _layoutLocked;
@@ -54,6 +70,8 @@ public sealed class CabinetScene : Grid
     public event Action<ShortcutVm, ShortcutVm>? ShortcutReordered;
     /// <summary>Kisayol bir cekmece onune birakildi: o cekmeceye tasinir.</summary>
     public event Action<ShortcutVm, CategoryVm>? ShortcutMoved;
+    /// <summary>Bosluk tusu ya da menu: hizli onizleme istendi.</summary>
+    public event Action<ShortcutVm>? PreviewRequested;
     Button? _pressCard, _dropTarget; Point _pressPos; bool _reordering;
     double _yaw, _pitch, _cabinetHeight;
     public int DrawerCount => _drawers.Count;
@@ -64,6 +82,7 @@ public sealed class CabinetScene : Grid
     public IEnumerable<Button> DrawerButtons => _frontButtons;
     /// <summary>Test icin: baslik yon oklari (sol, yukari, asagi, sag) ve gecerli/ hedef aci.</summary>
     internal List<RepeatButton> ArrowButtons { get; } = [];
+    internal int DividerCount => _drawers.Values.Sum(d => d.Dividers.Count);
     internal (double Yaw, double Pitch) ViewAngles => (_yaw, _pitch);
     internal (double Yaw, double Pitch) TargetAngles => (_targetYaw, _targetPitch);
     readonly List<Button> _frontButtons = [];
@@ -74,6 +93,7 @@ public sealed class CabinetScene : Grid
         public required FrameworkElement Tray { get; init; }
         /// <summary>Cekmecede dik duran kisayol kartlari; her birinin kendi kaldirma donusumu var.</summary>
         public List<(Button Button, TranslateTransform3D Lift)> Cards { get; } = [];
+        public List<FrameworkElement> Dividers { get; } = [];
     }
 
     public CabinetScene()
@@ -154,7 +174,7 @@ public sealed class CabinetScene : Grid
         // Sample the presented value so reversal and rebuild never accumulate animation clocks.
         var current = (double)transform.GetValue(property);
         transform.BeginAnimation(property, null); transform.SetValue(property, target);
-        transform.BeginAnimation(property, new DoubleAnimation(current, target, TimeSpan.FromMilliseconds(_blocks ? 290 : 340))
+        transform.BeginAnimation(property, new DoubleAnimation(current, target, TimeSpan.FromMilliseconds((_blocks ? 290 : 340) * Math.Clamp(MotionScale, 0.5, 1.6)))
         { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }, FillBehavior = FillBehavior.Stop }, HandoffBehavior.SnapshotAndReplace);
     }
 
@@ -185,8 +205,9 @@ public sealed class CabinetScene : Grid
         lights.Children.Add(new DirectionalLight(Color.FromRgb(65, 88, 126), new(1, -.2, -.4)));
         _view.Children.Add(new ModelVisual3D { Content = lights });
 
-        var body = CabinetMesh.Finish(_blocks ? "#153873" : "#4A5058", _blocks ? 90 : 65, .55,
-            _blocks ? CabinetMesh.Plastic() : CabinetMesh.BrushedSteel(), tint: _blocks);
+        var custom = _design.BodyColor != null;
+        var body = CabinetMesh.Finish(_design.BodyColor ?? (_blocks ? "#153873" : "#4A5058"), _blocks ? 90 : 65, .55,
+            _blocks ? CabinetMesh.Plastic() : CabinetMesh.BrushedSteel(), tint: _blocks || custom);
         var edges = CabinetMesh.Finish(_blocks ? "#102B59" : "#191D23", 80, .35);
         var chrome = CabinetMesh.Finish(_blocks ? "#22457C" : "#78828D", 85, .65);
         var dark = CabinetMesh.Finish("#0D1118", 15, .05);
@@ -225,8 +246,8 @@ public sealed class CabinetScene : Grid
             bay.Children.Add(CabinetMesh.Box(-143, top - 124, -170, 286, 4, 182, edges, 1));
             Add(bay);
             var moving = new Model3DGroup();
-            var finish = CabinetMesh.Finish(_blocks ? c.Model.Color : "#59616A", _blocks ? 100 : 70, .65,
-                _blocks ? CabinetMesh.Plastic() : CabinetMesh.BrushedSteel(), tint: _blocks);
+            var finish = CabinetMesh.Finish(_blocks ? c.Model.Color : _design.BodyColor ?? "#59616A", _blocks ? 100 : 70, .65,
+                _blocks ? CabinetMesh.Plastic() : CabinetMesh.BrushedSteel(), tint: _blocks || custom);
             moving.Children.Add(CabinetMesh.Box(-143, top - 121, -3, FrontWidth, 121, 17, finish, _blocks ? 7 : 3));
             moving.Children.Add(CabinetMesh.Box(-138, top - 108, -168, 276, 7, 168, dark, 2));
             moving.Children.Add(CabinetMesh.Box(-140, top - 105, -168, 7, 89, 165, finish, 2));
@@ -238,7 +259,16 @@ public sealed class CabinetScene : Grid
                 moving.Children.Add(CabinetMesh.Box(x, top - 82, -162, 3, 8, 155, chrome, 1));
                 moving.Children.Add(CabinetMesh.Box(x, top - 67, -150, 3, 3, 140, chrome, 1));
             }
-            if (!_blocks)
+            var handle = _design.Handle == "theme" ? (_blocks ? "notch" : "bar") : _design.Handle;
+            if (handle == "knob")
+            {
+                foreach (var x in new[] { -70d, 70 })
+                {
+                    moving.Children.Add(CabinetMesh.Cylinder(new(x, top - 70, 14), new(x, top - 70, 22), 4, chrome));
+                    moving.Children.Add(CabinetMesh.Cylinder(new(x, top - 70, 22), new(x, top - 70, 28), 9, chrome));
+                }
+            }
+            else if (handle == "bar")
             {
                 foreach (var x in new[] { -65d, 65 })
                 {
@@ -308,7 +338,8 @@ public sealed class CabinetScene : Grid
         var extracted = new List<Point3D>();
         foreach (var x in new[] { -145d, 145d }) foreach (var y in new[] { 10d, _cabinetHeight - 50 }) extracted.Add(new(x, y, 14 + Travel + 6));
         foreach (var x in new[] { -205d, 205 }) foreach (var y in new[] { -5d, _cabinetHeight + 45 }) pts.Add(new(x, y, -188));
-        _pivot = new(-_side * 8, _cabinetHeight / 2, 0);
+        pts = pts.Select(Sc).ToList(); extracted = extracted.Select(Sc).ToList();
+        _pivot = new(-_side * 8 * Ms.X, _cabinetHeight / 2 * Ms.Y, 0);
         // Ekran uzayinda tum acilarin birlesimi (asimetrik): kadraj sabit ama gereksiz bos alan yok.
         double minX = double.MaxValue, maxX = double.MinValue, minY = double.MaxValue, maxY = double.MinValue;
         for (var yaw = -YawLimit; yaw <= YawLimit; yaw += 5)
@@ -357,7 +388,7 @@ public sealed class CabinetScene : Grid
         foreach (var x in new[] { -175d, 175 })
             foreach (var z in new[] { -200d, 50 })
             {
-                var d = new Point3D(x, 0, z) - center;
+                var d = Sc(new Point3D(x, 0, z)) - center;
                 var sx = Width / 2 + Vector3D.DotProduct(d, r) * PixelsPerUnit;
                 var sy = Height / 2 - Vector3D.DotProduct(d, u) * PixelsPerUnit;
                 minX = Math.Min(minX, sx); maxX = Math.Max(maxX, sx); minY = Math.Min(minY, sy); maxY = Math.Max(maxY, sy);
@@ -365,7 +396,7 @@ public sealed class CabinetScene : Grid
         double bl = double.MaxValue, br = double.MinValue;
         foreach (var x in new[] { -158d, 158 }) foreach (var y in new[] { 0d, _cabinetHeight + 27 }) foreach (var z in new[] { -180d, 22 })
             {
-                var bx = Width / 2 + Vector3D.DotProduct(new Point3D(x, y, z) - center, r) * PixelsPerUnit;
+                var bx = Width / 2 + Vector3D.DotProduct(Sc(new Point3D(x, y, z)) - center, r) * PixelsPerUnit;
                 bl = Math.Min(bl, bx); br = Math.Max(br, bx);
             }
         BodyLeft = bl; BodyRight = br;
@@ -508,8 +539,13 @@ public sealed class CabinetScene : Grid
 
     Button BuildFront(CategoryVm category)
     {
-        var button = new Button { DataContext = category, Width = 284, Height = 121, Style = (Style)FindResource(_blocks ? "PhysicalBlockFront" : "PhysicalMetalFront"), ContextMenu = new ContextMenu(), AllowDrop = true };
+        var label = _design.Label == "theme" ? (_blocks ? "plain" : "plate") : _design.Label;
+        var button = new Button { DataContext = category, Width = 284, Height = 121, Style = (Style)FindResource(label == "plain" ? "PhysicalBlockFront" : "PhysicalMetalFront"), ContextMenu = new ContextMenu(), AllowDrop = true };
         AutomationProperties.SetName(button, category.Automation);
+        // Kapali cekmece ipucu: icindekilerin adlari (ilk 8) uzerine gelince.
+        if (category.Items.Count > 0)
+            button.ToolTip = string.Join(Environment.NewLine, category.Items.Take(8).Select(x => "• " + x.Name))
+                + (category.Items.Count > 8 ? $"{Environment.NewLine}+{category.Items.Count - 8} öğe daha" : "");
         button.Click += (s, e) => FrontClick?.Invoke(s, e);
         button.ContextMenuOpening += (s, e) => FrontContext?.Invoke(s, e);
         _frontButtons.Add(button);
@@ -536,18 +572,45 @@ public sealed class CabinetScene : Grid
     void BuildCards(CategoryVm category, DrawerPart part, double top)
     {
         const double W = 62, H = 74;
-        for (var i = 0; i < category.Items.Count; i++)
+        // Bolumler (alt sekmeler): ayni bolumdeki ogeler yan yana; her bolumun basinda etiketli ayrac karti.
+        var entries = new List<(ShortcutVm? Item, string? Divider)>();
+        string? current = null;
+        foreach (var it in category.Items.OrderBy(x => x.Model.Section == null ? 0 : 1).ThenBy(x => x.Model.Section, StringComparer.CurrentCultureIgnoreCase))
         {
-            var item = category.Items[i];
+            if (it.Model.Section != null && !string.Equals(it.Model.Section, current, StringComparison.CurrentCultureIgnoreCase))
+            { current = it.Model.Section; entries.Add((null, current)); }
+            entries.Add((it, null));
+        }
+        for (var i = 0; i < entries.Count; i++)
+        {
             int col = i % 4, row = i / 4;
+            if (entries[i].Divider is { } title)
+            {
+                var dx = -99 + col * 66; var dz = -46 - row * 46; var dy0 = top - 10 + row * 30;
+                var plate = new Border
+                {
+                    Width = 86, Height = 102, CornerRadius = new(9), IsHitTestVisible = false,
+                    Background = new SolidColorBrush(Color.FromArgb(225, 230, 196, 92)), BorderBrush = new SolidColorBrush(Color.FromArgb(200, 120, 90, 30)), BorderThickness = new(1),
+                    Child = new TextBlock { Text = title, FontSize = 14, FontWeight = FontWeights.SemiBold, Foreground = new SolidColorBrush(Color.FromRgb(40, 30, 10)),
+                        TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center, VerticalAlignment = VerticalAlignment.Center, Margin = new(6) },
+                };
+                AutomationProperties.SetName(plate, title + " bölümü");
+                part.Dividers.Add(plate);
+                Host(plate, CabinetMesh.Quad(new(dx - W / 2, dy0 + H, dz), new(dx - W / 2, dy0, dz), new(dx + W / 2, dy0, dz), new(dx + W / 2, dy0 + H, dz)), part.Transform);
+                continue;
+            }
+            var item = entries[i].Item!;
             var xc = -99 + col * 66; var z = -46 - row * 46; var y0 = top - 10 + row * 30;
             var button = new Button { DataContext = item, Style = (Style)FindResource("ItemButtonStyle"), ContextMenu = new ContextMenu(), ToolTip = item.Subtitle };
+            if (item.Broken) { button.Opacity = .45; button.ToolTip = "Hedef bulunamadı: " + item.Subtitle + Environment.NewLine + "Ayarlar > Veri > Kırık kısayolları onar"; }
             AutomationProperties.SetName(button, item.Automation + ". Bir kez seç, tekrar açmak için Enter");
             var lift = new TranslateTransform3D();
             _lifts[button] = lift;
             // Ilk tik evragi yukari kaldirir, kalkmis evraga ikinci tik hedefi acar.
             button.Click += (s, e) => { if (_lifted == button) ItemClick?.Invoke(s, e); else Lift(button); };
             button.GotKeyboardFocus += (_, _) => Lift(button);
+            // Bosluk tusu: hizli onizleme (Enter acar).
+            button.PreviewKeyDown += (_, e) => { if (e.Key == Key.Space) { PreviewRequested?.Invoke(item); e.Handled = true; } };
             button.PreviewMouseLeftButtonDown += (_, e) => { _pressCard = button; _pressPos = e.GetPosition(this); };
             button.ContextMenuOpening += (s, e) => ItemContext?.Invoke(s, e);
             var card = new Border
@@ -611,12 +674,12 @@ public sealed class CabinetScene : Grid
         _soundOpen |= open;
         if (_soundQueued) return;
         _soundQueued = true;
-        Dispatcher.BeginInvoke(() => { DrawerSounds.Play(_blocks, _soundOpen); _soundQueued = _soundOpen = false; });
+        Dispatcher.BeginInvoke(() => { DrawerSounds.Play(_blocks, _soundOpen, SoundVolume); _soundQueued = _soundOpen = false; });
     }
 
     void SetOpen(DrawerPart part, bool open)
     {
-        foreach (var e in part.Cards.Select(c => (FrameworkElement)c.Button.Parent).Prepend(part.Tray))
+        foreach (var e in part.Cards.Select(c => (FrameworkElement)c.Button.Parent).Concat(part.Dividers).Prepend(part.Tray))
         {
             e.IsHitTestVisible = open; e.IsEnabled = open;
             e.Visibility = open ? Visibility.Visible : Visibility.Hidden;
@@ -638,7 +701,7 @@ public sealed class CabinetScene : Grid
 
     void Add(Model3DGroup model, Transform3D? transform = null)
     {
-        model.Freeze(); _view.Children.Add(new ModelVisual3D { Content = model, Transform = transform ?? Transform3D.Identity });
+        model.Freeze(); _view.Children.Add(new ModelVisual3D { Content = model, Transform = WithModule(transform) });
     }
 
     double TextureScale => _lowQuality ? 1.5 : 4;
@@ -656,7 +719,17 @@ public sealed class CabinetScene : Grid
         // Supersample text and icons before perspective filtering (4x standard, 1.5x low).
         var host = new Grid { LayoutTransform = new ScaleTransform(TextureScale, TextureScale), Cursor = Cursors.Arrow };
         host.Children.Add(visual);
-        _view.Children.Add(new Viewport2DVisual3D { Geometry = mesh, Material = material, Visual = host, Transform = transform ?? Transform3D.Identity });
+        // Yuzey modulle olceklenirken 2B icerik de ayni oranda buyur: yazi/ikon esnemez.
+        if (!double.IsNaN(visual.Width)) visual.Width *= Ms.X;
+        if (!double.IsNaN(visual.Height)) visual.Height *= Ms.Y;
+        _view.Children.Add(new Viewport2DVisual3D { Geometry = mesh, Material = material, Visual = host, Transform = WithModule(transform) });
+    }
+
+    Transform3D WithModule(Transform3D? t)
+    {
+        if (Ms == (1.0, 1.0)) return t ?? Transform3D.Identity;
+        var g = new Transform3DGroup(); g.Children.Add(new ScaleTransform3D(Ms.X, Ms.Y, 1)); if (t != null) g.Children.Add(t);
+        return g;
     }
 
     static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject

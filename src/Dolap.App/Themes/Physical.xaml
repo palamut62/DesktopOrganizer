@@ -11,6 +11,11 @@
                         <TextBlock Text="{Binding Count}" Foreground="#FF424952" FontSize="11" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                     </Grid>
                 </Border>
+                <!-- Kapali cekmece ipucu: ilk ogelerin kucuk simgeleri -->
+                <ItemsControl ItemsSource="{Binding PreviewItems}" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="16,0,0,7" IsHitTestVisible="False" Opacity="0.9">
+                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate><DataTemplate><Image Source="{Binding Icon}" Width="15" Height="15" Margin="0,0,3,0" RenderOptions.BitmapScalingMode="HighQuality"/></DataTemplate></ItemsControl.ItemTemplate>
+                </ItemsControl>
                 <Border x:Name="Highlight" BorderBrush="#6697CFFF" BorderThickness="2" CornerRadius="4" Visibility="Collapsed"/>
             </Grid>
             <ControlTemplate.Triggers>
@@ -30,6 +35,11 @@
                         <TextBlock Text="{Binding Count}" Foreground="{Binding LabelBrush}" FontSize="12" HorizontalAlignment="Right" VerticalAlignment="Center"/>
                     </Grid>
                 </Border>
+                <!-- Kapali cekmece ipucu: ilk ogelerin kucuk simgeleri -->
+                <ItemsControl ItemsSource="{Binding PreviewItems}" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="16,0,0,7" IsHitTestVisible="False" Opacity="0.9">
+                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate><DataTemplate><Image Source="{Binding Icon}" Width="15" Height="15" Margin="0,0,3,0" RenderOptions.BitmapScalingMode="HighQuality"/></DataTemplate></ItemsControl.ItemTemplate>
+                </ItemsControl>
                 <Border x:Name="Highlight" BorderBrush="#99FFFFFF" BorderThickness="2" CornerRadius="9" Visibility="Collapsed"/>
             </Grid>
             <ControlTemplate.Triggers>

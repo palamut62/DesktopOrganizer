@@ -40,6 +40,7 @@ public partial class MainWindow
     /// <summary>Klasorun ust duzey ogelerini okuyup cekmeceye yansitir. Gizli/sistem dosyalari atlanir.</summary>
     void SyncFolder(Guid catId, string folder, bool quiet)
     {
+        if (folder.StartsWith(SmartPrefix)) { RefreshSmart(catId, folder[SmartPrefix.Length..]); return; }
         if (!Directory.Exists(folder)) { if (!quiet) ShowToast("Bağlı klasör bulunamadı: " + folder); return; }
         var drafts = new List<ShortcutDraft>();
         try

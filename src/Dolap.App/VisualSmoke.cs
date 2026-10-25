@@ -115,6 +115,32 @@ public partial class MainWindow
         for (var i = 0; i < 40 && _store.GetShortcuts(linkCat.Model.Id).Count == linkedBefore + 1; i++) await Task.Delay(100);
         Check(_store.GetShortcuts(linkCat.Model.Id).Count == linkedBefore && File.Exists(Path.Combine(linked, "iki.txt")),
             "Linked folder removes vanished file from drawer and never touches remaining files");
+        // Yol haritasi: modul/tasarim, bolumler, onek onerisi, onizleme, tepsi (hepsi gecici veriyle).
+        var narrowWidth = Scene.Width;
+        ApplySettings(Settings with { Design = new CabinetDesign("#A3262A", "knob", "plain", "wide") });
+        await Task.Delay(120);
+        Check(Scene.Width > narrowWidth + 40 && Scene.DrawerCount == 4, "Wide module widens the cabinet and keeps all drawers");
+        ApplySettings(Settings with { Design = new CabinetDesign() });
+        var sec = _vm.Categories[0].Items;
+        Guard(() => { _store.SetSection(sec[0].Model.Id, "Raporlar"); _store.SetSection(sec[1].Model.Id, "Raporlar"); _store.SetSection(sec[2].Model.Id, "Arşiv"); });
+        LoadAll();
+        Check(Scene.DividerCount == 2, "Sections render one labelled divider per section");
+        Check(CommonPrefix([@"Z:\Eski\Proje\a.txt", @"z:\eski\Proje\b\c.txt"]) == @"Z:\Eski\Proje", "Broken-path prefix suggestion finds the shared folder");
+        var note = Path.Combine(output, "onizleme.txt"); File.WriteAllText(note, "merhaba dolap");
+        var noteCat = _vm.Categories[2];
+        Guard(() => _store.AddShortcut(noteCat.Model.Id, new("Önizleme notu", ShortcutKind.File, note)));
+        LoadAll();
+        ShowPreview(_vm.Categories[2].Items.First(i => i.Name == "Önizleme notu"));
+        await Task.Delay(150);
+        var pw = Application.Current.Windows.OfType<Window>().FirstOrDefault(w => w.Title.StartsWith("Önizleme"));
+        Check(pw != null, "Space preview opens a text preview window");
+        pw?.Close();
+        var shelf = new ShelfWindow(_store);
+        var shelfCat = ShelfWindow.CategoryId(_store);
+        _store.AddShortcut(shelfCat, new("Tepsideki not", ShortcutKind.File, note));
+        LoadAll();
+        Check(_vm.Categories.All(c => c.Model.LinkedFolder != ShelfWindow.Marker) && _store.GetShortcuts(shelfCat).Count == 1, "Drop shelf keeps items out of cabinets");
+        shelf.Close();
         OpenSettings(); await Task.Delay(150);
         Check(_settingsWin is { IsLoaded: true }, "Production settings window loads with new resource dictionaries");
         Check(_settingsWin!.FindName("RoomStyle") == null && _settingsWin.FindName("WeatherBox") == null,

@@ -38,13 +38,14 @@ static class Native
     interface IShellItemImageFactory { [PreserveSig] int GetImage(SIZE size, int flags, out IntPtr hbm); }
 
     /// <summary>Kabuk ikonunu 64px'e kadar alir (ICONONLY|BIGGERSIZEOK). Basarisizsa null.</summary>
-    public static BitmapSource? ShellIcon(string path, int size = 64)
+    public static BitmapSource? ShellIcon(string path, int size = 64, bool thumbnail = false)
     {
         try
         {
             var iid = typeof(IShellItemImageFactory).GUID;
             SHCreateItemFromParsingName(path, IntPtr.Zero, ref iid, out var f);
-            if (f.GetImage(new SIZE { W = size, H = size }, 0x4 | 0x1, out var hbm) != 0 || hbm == IntPtr.Zero) return null;
+            // thumbnail: dosyanin kendi onizlemesi (PDF ilk sayfa, video kare); degilse yalniz simge.
+            if (f.GetImage(new SIZE { W = size, H = size }, thumbnail ? 0x1 : 0x4 | 0x1, out var hbm) != 0 || hbm == IntPtr.Zero) return null;
             try
             {
                 var src = Imaging.CreateBitmapSourceFromHBitmap(hbm, IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());

@@ -30,6 +30,13 @@ public partial class SettingsWindow : Window
         _loading = true;
         var s = _main.Settings;
         CabName.Text = _main.CabinetName;
+        var d = s.Design;
+        VisibleBox.IsChecked = d.Visible;
+        BodyColorBox.ItemsSource = BodyColors.Select(c => c.Name).ToList();
+        BodyColorBox.SelectedIndex = Math.Max(0, Array.FindIndex(BodyColors, c => c.Hex == d.BodyColor));
+        SelectTag(HandleBox, d.Handle); SelectTag(LabelBox, d.Label); SelectTag(ModuleBox, d.Module);
+        VolumeSlider.Value = s.SoundVolume; MotionSlider.Value = s.MotionScale; ShelfBox.IsChecked = s.ShowShelf;
+        RefreshLayouts();
         OpenDir.SelectedIndex = (int)s.OpenDirection;
         (s.ThemeId == "blocks" ? ThemeBlocks : ThemeMetal).IsChecked = true;
         ScaleSlider.Value = s.Scale;
@@ -131,8 +138,67 @@ public partial class SettingsWindow : Window
         if (!ScaleSlider.IsMouseCaptureWithin && !ScaleSlider.IsKeyboardFocusWithin) return; // yalniz kullanici degisimi
         Apply(x => x with { Scale = v });
     }
+    static readonly (string Name, string? Hex)[] BodyColors =
+    [
+        ("Temaya göre", null), ("Grafit", "#3C4148"), ("Gümüş", "#9AA3AD"), ("Lacivert", "#1A2F6B"), ("Kırmızı", "#A3262A"),
+        ("Orman yeşili", "#2F5D3A"), ("Kum", "#B9A27A"), ("Beyaz", "#E6E6E2"), ("Siyah", "#16181C"),
+    ];
+
+    static void SelectTag(System.Windows.Controls.ComboBox c, string tag) =>
+        c.SelectedItem = c.Items.Cast<System.Windows.Controls.ComboBoxItem>().FirstOrDefault(i => (string)i.Tag == tag) ?? c.Items[0];
+
+    void Design_Changed(object s, RoutedEventArgs e) => Apply(x => x with
+    {
+        Design = new CabinetDesign(BodyColors[Math.Max(0, BodyColorBox.SelectedIndex)].Hex, SelectedTag(HandleBox), SelectedTag(LabelBox), SelectedTag(ModuleBox), VisibleBox.IsChecked == true),
+    });
+
+    void Volume_Changed(object s, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!VolumeSlider.IsMouseCaptureWithin && !VolumeSlider.IsKeyboardFocusWithin) return;
+        Apply(x => x with { SoundVolume = (int)Math.Round(e.NewValue) });
+    }
+
+    void Motion_Changed(object s, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (!MotionSlider.IsMouseCaptureWithin && !MotionSlider.IsKeyboardFocusWithin) return;
+        Apply(x => x with { MotionScale = Math.Round(e.NewValue, 2) });
+    }
+
+    // ---- calisma setleri ve zaman makinesi ----
+    List<LayoutSnapshot> _sets = [], _history = [];
+    void RefreshLayouts()
+    {
+        _sets = _main.Store.GetSnapshots(true); _history = _main.Store.GetSnapshots(false);
+        SetsList.ItemsSource = _sets.Select(x => x.Name).ToList();
+        HistoryList.ItemsSource = _history.Select(x => x.CreatedAt.ToString("dd.MM HH:mm") + $"  ({x.Cabinets.Count} dolap)").ToList();
+    }
+    void SaveSet_Click(object s, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(SetName.Text)) { LayoutMsg.Text = "Set için bir ad yazın (ör. İş, Yazılım, Oyun)."; return; }
+        _main.Store.SaveSnapshot(SetName.Text.Trim()); LayoutMsg.Text = $"\"{SetName.Text.Trim()}\" kaydedildi."; SetName.Clear(); RefreshLayouts();
+    }
+    void ApplySet_Click(object s, RoutedEventArgs e)
+    {
+        if (SetsList.SelectedIndex < 0) { LayoutMsg.Text = "Önce bir set seçin."; return; }
+        var n = Host!.ApplySnapshot(_sets[SetsList.SelectedIndex].Id); LayoutMsg.Text = $"Set uygulandı ({n} dolap)."; LoadFrom();
+    }
+    void DeleteSet_Click(object s, RoutedEventArgs e)
+    {
+        if (SetsList.SelectedIndex < 0) return;
+        _main.Store.DeleteSnapshot(_sets[SetsList.SelectedIndex].Id); RefreshLayouts();
+    }
+    void RestoreHistory_Click(object s, RoutedEventArgs e)
+    {
+        if (HistoryList.SelectedIndex < 0) { LayoutMsg.Text = "Önce geçmişten bir an seçin."; return; }
+        // Geri donusten once mevcut hal de gecmise yazilir: geri donus geri alinabilir.
+        _main.Store.SaveSnapshot(null);
+        var n = Host!.ApplySnapshot(_history[HistoryList.SelectedIndex].Id); LayoutMsg.Text = $"Düzen o ana döndü ({n} dolap). Önceki hâl geçmişe kaydedildi."; LoadFrom();
+    }
+    async void Broken_Click(object s, RoutedEventArgs e) => await _main.RepairBroken();
+
     void Behavior_Click(object s, RoutedEventArgs e) => Apply(x => x with
     {
+        ShowShelf = ShelfBox.IsChecked == true,
         LayoutLocked = LockLayout.IsChecked == true, MagneticSnap = SnapLayout.IsChecked == true,
         ReduceMotion = ReduceMotion.IsChecked, ThemedWallpaper = ThemedWp.IsChecked == true, Sounds = SoundsBox.IsChecked == true, HideDesktopIcons = HideIcons.IsChecked == true, ShowSystemMonitor = MonitorBox.IsChecked == true, DepthScale = DepthBox.IsChecked == true, QualityProfile = LowQuality.IsChecked == true ? "low" : "standard",
         AutoHide = AutoHide.IsChecked == true, AlwaysOnTop = AlwaysOnTop.IsChecked == true,
@@ -185,6 +251,8 @@ public partial class SettingsWindow : Window
             _main.Store.ImportJson(d.FileName, Paths.Backups);
             Host?.CabinetWindows.ToList().ForEach(w => { w.ReloadSettings(); w.Reload(); });
             DataMsg.Text = "Geri yüklendi.";
+            // Baska bilgisayardan gelen yedek: eksik yollari eslemeyi oner.
+            if (_main.Store.FindBroken().Count > 0) await _main.RepairBroken();
         }
         catch (Exception ex) when (ex is DolapException or IOException) { DataMsg.Text = ex.Message; }
     }

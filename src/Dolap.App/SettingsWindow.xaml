@@ -26,7 +26,7 @@
         </StackPanel>
     </Border>
     <TabControl Margin="8" Background="#FF1B1E23">
-        <TabItem Header="Görünüm"><StackPanel Margin="14">
+        <TabItem Header="Görünüm"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="14">
             <TextBlock Text="Tema" FontWeight="SemiBold"/>
             <RadioButton x:Name="ThemeMetal" Content="Metal Dolap (fırçalanmış çelik)" GroupName="t" Checked="Theme_Checked" Tag="metal"/>
             <RadioButton x:Name="ThemeBlocks" Content="Blok Dolap (oyuncak blok tarzı)" GroupName="t" Checked="Theme_Checked" Tag="blocks"/>
@@ -37,7 +37,27 @@
             <CheckBox x:Name="ThemedWp" Content="Temaya uygun masaüstü duvar kağıdı (kapatınca eskisi geri gelir)" Click="Behavior_Click"/>
             <CheckBox x:Name="HideIcons" Content="Uygulama açıkken masaüstü simgelerini gizle (dosyalar yerinde kalır)" Click="Behavior_Click"/>
             <CheckBox x:Name="LowQuality" Content="Düşük kaynak modu (gölgeleri azaltır)" Click="Behavior_Click"/>
-        </StackPanel></TabItem>
+            <TextBlock Text="Bu dolabın tasarımı" FontWeight="SemiBold" Margin="0,16,0,0"/>
+            <CheckBox x:Name="VisibleBox" Content="Bu dolap görünsün (çalışma setlerinde gizlenebilir)" Click="Design_Changed"/>
+            <Grid Margin="0,6,0,0">
+                <Grid.ColumnDefinitions><ColumnDefinition Width="90"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <Grid.RowDefinitions><RowDefinition/><RowDefinition/><RowDefinition/><RowDefinition/></Grid.RowDefinitions>
+                <TextBlock Text="Gövde rengi" VerticalAlignment="Center"/>
+                <ComboBox x:Name="BodyColorBox" Grid.Column="1" Margin="0,3" SelectionChanged="Design_Changed" AutomationProperties.Name="Gövde rengi"/>
+                <TextBlock Grid.Row="1" Text="Kulp" VerticalAlignment="Center"/>
+                <ComboBox x:Name="HandleBox" Grid.Row="1" Grid.Column="1" Margin="0,3" SelectionChanged="Design_Changed" AutomationProperties.Name="Kulp">
+                    <ComboBoxItem Content="Temaya göre" Tag="theme"/><ComboBoxItem Content="Çubuk kulp" Tag="bar"/><ComboBoxItem Content="Topuz" Tag="knob"/><ComboBoxItem Content="Girinti" Tag="notch"/>
+                </ComboBox>
+                <TextBlock Grid.Row="2" Text="Etiket" VerticalAlignment="Center"/>
+                <ComboBox x:Name="LabelBox" Grid.Row="2" Grid.Column="1" Margin="0,3" SelectionChanged="Design_Changed" AutomationProperties.Name="Etiket">
+                    <ComboBoxItem Content="Temaya göre" Tag="theme"/><ComboBoxItem Content="Metal plaka" Tag="plate"/><ComboBoxItem Content="Düz yazı ve simge" Tag="plain"/>
+                </ComboBox>
+                <TextBlock Grid.Row="3" Text="Modül" VerticalAlignment="Center"/>
+                <ComboBox x:Name="ModuleBox" Grid.Row="3" Grid.Column="1" Margin="0,3" SelectionChanged="Design_Changed" AutomationProperties.Name="Modül">
+                    <ComboBoxItem Content="Standart" Tag="standard"/><ComboBoxItem Content="İnce evrak dolabı" Tag="slim"/><ComboBoxItem Content="Geniş takım dolabı" Tag="wide"/><ComboBoxItem Content="Büyük çekmeceli modül" Tag="double"/>
+                </ComboBox>
+            </Grid>
+        </StackPanel></ScrollViewer></TabItem>
         <TabItem Header="Yerleşim"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="14">
             <CheckBox x:Name="LockLayout" Content="Tüm dolaplarda sürükleme ve döndürmeyi kilitle" Click="Behavior_Click"/>
             <CheckBox x:Name="SnapLayout" Content="Manyetik hizalama (tüm dolaplar)" Click="Behavior_Click"/>
@@ -64,6 +84,11 @@
         </StackPanel></ScrollViewer></TabItem>
         <TabItem Header="Davranış"><StackPanel Margin="14">
             <CheckBox x:Name="SoundsBox" Content="Çekmece açılma ve kapanma sesi" Click="Behavior_Click"/>
+            <TextBlock Text="Ses seviyesi" Margin="0,6,0,0"/>
+            <Slider x:Name="VolumeSlider" Minimum="0" Maximum="100" ValueChanged="Volume_Changed" AutomationProperties.Name="Ses seviyesi"/>
+            <TextBlock Text="Hareket hızı (sol: hızlı, sağ: yavaş ve yumuşak)" Margin="0,6,0,0"/>
+            <Slider x:Name="MotionSlider" Minimum="0.5" Maximum="1.6" ValueChanged="Motion_Changed" AutomationProperties.Name="Hareket hızı"/>
+            <CheckBox x:Name="ShelfBox" Content="Bırakma tepsisini göster (dosya, bağlantı, ekran görüntüsü için geçici alan)" Click="Behavior_Click" Margin="0,10,0,0"/>
             <CheckBox x:Name="CloseAfter" Content="Başarılı başlatmadan sonra çekmeceyi kapat" Click="Behavior_Click"/>
             <CheckBox x:Name="StartWin" Content="Windows ile başlat" Click="Behavior_Click"/>
             <TextBlock Text="Göster/gizle kısayolu" FontWeight="SemiBold" Margin="0,14,0,0"/>
@@ -76,8 +101,27 @@
             <Button Style="{StaticResource B}" Content="Masaüstünden içe aktar..." Click="Import_Click"/>
             <Button Style="{StaticResource B}" Content="Dışa aktar (JSON)" Click="Export_Click"/>
             <Button Style="{StaticResource B}" Content="Yedekten geri yükle" Click="Restore_Click"/>
+            <Button Style="{StaticResource B}" Content="Kırık kısayolları bul ve onar" Click="Broken_Click"/>
             <TextBlock x:Name="BackupInfo" Foreground="{StaticResource MutedBrush}" Margin="0,12,0,0" TextWrapping="Wrap"/>
             <TextBlock x:Name="DataMsg" Margin="0,8,0,0" TextWrapping="Wrap"/>
+        </StackPanel></TabItem>
+        <TabItem Header="Düzenler"><StackPanel Margin="14">
+            <TextBlock Text="Çalışma setleri" FontWeight="SemiBold"/>
+            <TextBlock Text="Dolapların konum, tema, açı, tasarım ve görünürlüğünü adla kaydedin; tek tıkla geçin (tepsi menüsünden de)." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
+            <DockPanel Margin="0,6,0,0">
+                <Button DockPanel.Dock="Right" Style="{StaticResource B}" Content="Şu anki düzeni kaydet" Click="SaveSet_Click" Margin="6,0,0,0"/>
+                <TextBox x:Name="SetName" AutomationProperties.Name="Set adı"/>
+            </DockPanel>
+            <ListBox x:Name="SetsList" Height="90" Margin="0,6,0,0" AutomationProperties.Name="Çalışma setleri"/>
+            <StackPanel Orientation="Horizontal">
+                <Button Style="{StaticResource B}" Content="Uygula" Click="ApplySet_Click"/>
+                <Button Style="{StaticResource B}" Content="Sil" Click="DeleteSet_Click"/>
+            </StackPanel>
+            <TextBlock Text="Düzen zaman makinesi" FontWeight="SemiBold" Margin="0,16,0,0"/>
+            <TextBlock Text="Yerleşim her değiştiğinde (dakikada en fazla bir) otomatik kaydedilir; son 30 an saklanır. Kısayollar etkilenmez." Foreground="{StaticResource MutedBrush}" TextWrapping="Wrap"/>
+            <ListBox x:Name="HistoryList" Height="110" Margin="0,6,0,0" AutomationProperties.Name="Düzen geçmişi"/>
+            <Button Style="{StaticResource B}" Content="Seçili ana geri dön" Click="RestoreHistory_Click"/>
+            <TextBlock x:Name="LayoutMsg" Margin="0,8,0,0" TextWrapping="Wrap"/>
         </StackPanel></TabItem>
         <TabItem Header="Monitör"><StackPanel Margin="14">
             <CheckBox x:Name="MonitorBox" Content="Sistem monitörünü göster (işlemci, ekran kartı, bellek, disk, süreçler)" Click="Behavior_Click"/>

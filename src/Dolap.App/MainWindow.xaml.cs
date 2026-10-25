@@ -59,6 +59,7 @@ public partial class MainWindow : Window
         Scene.ViewChanged += (yaw, pitch) => ApplySettings(Settings with { Yaw = yaw, Pitch = pitch });
         Scene.ShortcutReordered += (src, target) => DropShortcut(src, target.Model.CategoryId, target.Model.Id);
         Scene.ShortcutMoved += (src, cat) => DropShortcut(src, cat.Model.Id, null);
+        Scene.PreviewRequested += ShowPreview;
         // Cekmece sayisi degisince sahne boyu degisir; pencere ona uyar.
         Scene.SizeChanged += (_, _) => { if (!_dragging) PlaceWindow(); };
         SourceInitialized += OnSourceInitialized;
@@ -68,6 +69,7 @@ public partial class MainWindow : Window
             if (!_isolated)
                 foreach (var c in _store.GetCategories(_cabinetId).Where(c => !string.IsNullOrWhiteSpace(c.LinkedFolder)))
                     SyncFolder(c.Id, c.LinkedFolder!, quiet: true);
+            StartSmartTimer();
             // gelistirme yardimcisi: --open <sira> cekmeceyi acik baslatir (ekran goruntusu icin)
             var args = Environment.GetCommandLineArgs();
             var k = Array.IndexOf(args, "--open");
@@ -106,7 +108,7 @@ public partial class MainWindow : Window
     {
         var openId = _vm.Categories.Count == 0 && !_loadedOnce ? Settings.OpenCategory : _vm.Categories.FirstOrDefault(c => c.IsOpen)?.Model.Id;
         _loadedOnce = true;
-        var cats = _store.GetCategories(_cabinetId);
+        var cats = _store.GetCategories(_cabinetId).Where(c => c.LinkedFolder != ShelfWindow.Marker).ToList();
         var byCat = _store.GetShortcuts().GroupBy(s => s.CategoryId).ToDictionary(g => g.Key, g => g.ToList());
         _vm.Categories.Clear();
         _all = [];
@@ -182,7 +184,9 @@ public partial class MainWindow : Window
     {
         var b = (Button)s; var sv = Sc(b); var cm = b.ContextMenu!; cm.Items.Clear();
         cm.Items.Add(Mi("Aç", () => LaunchItem(sv)));
+        cm.Items.Add(Mi("Önizle (Boşluk)", () => ShowPreview(sv)));
         cm.Items.Add(Mi("Düzenle", async () => await EditShortcut(sv)));
+        cm.Items.Add(Mi("Bölüm…", async () => await EditSection(sv)));
         var move = new MenuItem { Header = "Başka kategoriye taşı" };
         foreach (var c in _vm.Categories.Where(c => c.Model.Id != sv.Model.CategoryId))
         {
@@ -245,7 +249,10 @@ public partial class MainWindow : Window
             }
             cm.Items.Add(mc);
         }
-        if (string.IsNullOrEmpty(c.Model.LinkedFolder))
+        cm.Items.Add(Mi("Tümünü aç", async () => await LaunchAll(c)));
+        if (c.Model.LinkedFolder?.StartsWith(SmartPrefix) == true)
+            cm.Items.Add(Mi("Şimdi güncelle", () => RefreshSmart(c.Model.Id, c.Model.LinkedFolder[SmartPrefix.Length..])));
+        else if (string.IsNullOrEmpty(c.Model.LinkedFolder))
             cm.Items.Add(Mi("Klasöre bağla…", () => LinkFolder(c)));
         else
         {
@@ -313,6 +320,10 @@ public partial class MainWindow : Window
         App.ApplyTheme(s.ThemeId, s.ReduceMotion ?? !SystemParameters.ClientAreaAnimation, s.QualityProfile == "low");
         _vm.Side = SideOf(s);
         Scene.LayoutLocked = s.LayoutLocked;
+        Scene.SetDesign(s.Design);
+        Scene.MotionScale = s.MotionScale; Scene.SoundVolume = s.SoundVolume;
+        // Calisma setinde gizlenen dolap: pencere kapanmaz, gorunmez olur (veri ve izleyiciler calisir).
+        if (!_isolated && IsLoaded) { if (!s.Design.Visible) Hide(); else if (!IsVisible && (Application.Current as App)?.AllHidden == false) ShowCabinet(); }
         Scene.SetView(s.Yaw, s.Pitch);
         Scene.Configure(s.ThemeId, _vm.Side, s.ReduceMotion ?? !SystemParameters.ClientAreaAnimation, s.QualityProfile == "low");
         Topmost = s.AlwaysOnTop;
@@ -322,6 +333,7 @@ public partial class MainWindow : Window
         {
             DesktopIcons.SetVisible(!s.HideDesktopIcons);
             (Application.Current as App)?.SyncMonitor(s);
+            (Application.Current as App)?.SyncShelf(s);
             if (s.ThemedWallpaper) _ = WallpaperService.Apply(s.ThemeId, SideOf(s) < 0);
             else if (prev.ThemedWallpaper) _ = WallpaperService.Restore();
         }
@@ -528,7 +540,7 @@ public partial class MainWindow : Window
     // Arama dugmesi ac/kapa calisir.
     void Search_Click(object s, RoutedEventArgs e) { if (_searchOpen) CancelModal(); else ShowSearch(); }
     void Settings_Click(object s, RoutedEventArgs e) => OpenSettings();
-    async void AddCategory_Click(object s, RoutedEventArgs e) => await EditCategory(null);
+    async void AddCategory_Click(object s, RoutedEventArgs e) => await AddDrawer();
     async void AddShortcut_Click(object s, RoutedEventArgs e) => await EditShortcut(null, Cat(s));
 
     SettingsWindow? _settingsWin;

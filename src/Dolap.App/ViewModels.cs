@@ -24,6 +24,8 @@ public sealed class ShortcutVm(Shortcut model, string categoryName) : Obs
     public Shortcut Model { get; set; } = model;
     public string CategoryName { get; set; } = categoryName;
     public string Name => Model.DisplayName;
+    /// <summary>Hedefi bulunamayan yerel kisayol (kirik); kartta soluk gosterilir.</summary>
+    public bool Broken { get; } = model.Kind != ShortcutKind.Url && !System.IO.File.Exists(model.SourceLinkPath ?? model.Target) && !System.IO.Directory.Exists(model.SourceLinkPath ?? model.Target);
     string? _key;
     public string SearchKey => _key ??= TurkishText.Fold($"{Name} {CategoryName} {Model.Target}");
     public string Subtitle => Model.Kind == ShortcutKind.Url ? Model.Target : Model.SourceLinkPath ?? Model.Target;
@@ -57,6 +59,8 @@ public sealed class CategoryVm(Category model) : Obs
     bool _open;
     public Category Model { get; set; } = model;
     public ObservableCollection<ShortcutVm> Items { get; } = [];
+    /// <summary>Kapali cekmece onundeki kucuk simge seridi (ilk 5 oge).</summary>
+    public List<ShortcutVm> PreviewItems => Items.Take(5).ToList();
     public Visibility EmptyVisibility => Items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     public string Name => Model.Name;
     public int Count => Items.Count;
@@ -71,7 +75,7 @@ public sealed class CategoryVm(Category model) : Obs
         Fill = Icons.Brush(Model.Color);
         var color = (Color)ColorConverter.ConvertFromString(Model.Color);
         LabelBrush = .2126 * color.R + .7152 * color.G + .0722 * color.B > 155 ? Brushes.Black : Brushes.White;
-        foreach (var n in new[] { nameof(Name), nameof(Glyph), nameof(Fill), nameof(LabelBrush), nameof(Count), nameof(Automation), nameof(EmptyVisibility) }) Raise(n);
+        foreach (var n in new[] { nameof(Name), nameof(Glyph), nameof(Fill), nameof(LabelBrush), nameof(Count), nameof(PreviewItems), nameof(Automation), nameof(EmptyVisibility) }) Raise(n);
     }
 }
 

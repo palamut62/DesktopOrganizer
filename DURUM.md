@@ -37,25 +37,25 @@ Guncel: 2026-10-25 | son arac: Claude Code | asama: teslim tamamlandi, iyilestir
 - Onceki gelisim notlari PROJE-REHBER.md icinde tarihsel kayit olarak korundu.
 - GitHub main push dogrulandi: 6cb8354934d7dc85ecc3844ba88f02ff2e13e46d.
 
-## Iyilestirme yol haritasi (henuz uygulanmadi)
-Bu liste beyin firtinasi fikirlerinin tamamidir; tamamlandi anlamina gelmez. Kullanici devam edilmesini istedi. Ilk uygulama paketi P1 yerlesimdir.
+## Iyilestirme yol haritasi (tamamlandi)
+Tum maddeler uygulandi (sema v5). Dogrulama: Core 37/37, app-smoke 26/26, visual-check gecti. Gercek fareyle: tepsi surukle-birak, klasor secme ve proje sihirbazi ayrica denenmeli.
 - [x] P1 Manyetik hizalama: ekran kenarlari ve diger dolaplara yapisma, tutarli bosluk (Alt ile atla). LayoutSnap + testler.
 - [x] P1 Yerlesimi kilitleme: tasima/dondurme kilidi (Ayarlar > Yerlesim).
 - [x] P2 Klasore bagli cekmece: kategori menusu > Klasore bagla; FileSystemWatcher (800 ms) ust duzeyi yansitir, en fazla 200 oge; dosyalara dokunmaz; sema v4 categories.linked_folder.
-- [ ] P3 Calisma setleri: Is / Yazilim / Oyun gibi dolap gorunum duzenleri arasinda gecis.
-- [ ] P4 Hizli onizleme: bosluk tusuyla resim, PDF ve metin onizlemesi.
-- [ ] P5 Dolap tasarim editoru: govde/cekmece rengi, malzeme, kulp ve etiket secimi.
-- [ ] Akilli cekmeceler: son indirilenler, son acilanlar, bu hafta degisenler.
-- [ ] Toplu baslatma: secili uygulama, klasor ve siteleri tek hareketle acma.
-- [ ] Kirik kisayol tespiti ve hedefi yeniden eslestirme.
-- [ ] Farkli dolap modulleri: ince evrak, genis takim, iki cekmeceli modul.
-- [ ] Kapali cekmecede icerik ipucu: kucuk simgeler ve uzerine gelince onizleme (mevcut oge sayisina ek).
-- [ ] Malzemeye ozel hareket ayari; mevcut ses ac/kapa yanina ses seviyesi ve hareket siddeti.
-- [ ] Gecici birakma tepsisi: dosya, ekran goruntusu ve baglantilari sonradan dagitma.
-- [ ] Cekmece ici boluculer / alt sekmeler.
-- [ ] Proje cekmecesi: klasor, terminal, editor, siteler ve notlar; toplu baslatmayla birlikte.
-- [ ] Duzen zaman makinesi: yerlesim gecmisi ve geri donme (mevcut geri al/yedekten daha genis).
-- [ ] Tasinabilir duzen: baska bilgisayarda eksik yollarin yeniden eslestirilmesi (mevcut JSON aktarimina ek).
+- [x] P3 Calisma setleri: Ayarlar > Duzenler ve tepsi menusu; konum/tema/aci/tasarim/gorunurluk adla kaydedilir (snapshots tablosu).
+- [x] P4 Hizli onizleme: kartta Bosluk ya da menu > Onizle; resim, metin (ilk 64 KB), digerleri kabuk kucuk resmi (PDF ilk sayfa), klasor listesi.
+- [x] P5 Dolap tasarim editoru: Ayarlar > Gorunum > Bu dolabin tasarimi (govde rengi, kulp: cubuk/topuz/girinti, etiket: plaka/duz).
+- [x] Akilli cekmeceler: + > Son indirilenler / Son acilanlar / Bu hafta degisenler; 10 dk'da bir ve menuden guncellenir (linked_folder = smart:<tur>).
+- [x] Toplu baslatma: cekmece menusu > Tumunu ac (6'dan fazlasinda onay, 180 ms arayla).
+- [x] Kirik kisayol: kartta soluk + ipucu; Ayarlar > Veri > Kirik kisayollari bul ve onar (tek tek yeni konum / kaldir).
+- [x] Dolap modulleri: standart / ince evrak / genis takim / buyuk cekmeceli (3B olcek + 2B yuzeyler oranli buyur, yazi esnemez).
+- [x] Kapali cekmece ipucu: on yuzde ilk 5 ogenin kucuk simgeleri, uzerine gelince ilk 8 ogenin adi.
+- [x] Hareket/ses: malzemeye gore sure (blok 290, metal 340 ms) x hareket hizi (0.5-1.6); ses seviyesi 0-100 (PCM olcekleme).
+- [x] Birakma tepsisi: ayri pencere (Davranis ayari / tepsi menusu); surukle-birak, Ctrl+V (dosya, baglanti, ekran goruntusu -> tepsi/ klasorune PNG); menuden cekmeceye tasi.
+- [x] Cekmece bolumleri: kart menusu > Bolum...; ayni bolum yan yana, basinda etiketli ayrac karti (shortcuts.section).
+- [x] Proje cekmecesi: + > Proje cekmecesi; klasor, Windows Terminal (yoksa cmd), VS Code (varsa), notlar (uygulama klasorunde .md), siteler; Tumunu ac.
+- [x] Duzen zaman makinesi: dakikada bir degisiklik varsa otomatik an (son 30); Ayarlar > Duzenler > Secili ana geri don (once mevcut hal kaydedilir).
+- [x] Tasinabilir duzen: geri yuklemeden sonra kirik yol varsa onarim acilir; ortak onek onerisiyle toplu yol esleme (RemapPrefix).
 
 ## Korunacak kararlar
 - Dosyalara referans veren kisayollar; hedef dosyalara dokunulmaz.

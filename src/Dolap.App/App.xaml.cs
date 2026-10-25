@@ -72,6 +72,7 @@ public partial class App : Application
         }
         foreach (var cab in _store.GetCabinets()) OpenCabinetWindow(cab.Id);
         BuildTray();
+        StartHistory();
         new Thread(() => { while (_showEvent.WaitOne()) Dispatcher.Invoke(ShowAll); }) { IsBackground = true }.Start();
     }
 
@@ -117,6 +118,17 @@ public partial class App : Application
         menu.Items.Add("Göster / Gizle", null, (_, _) => ToggleAll());
         menu.Items.Add("Metal Dolap", null, (_, _) => SetTheme("metal"));
         menu.Items.Add("Blok Dolap", null, (_, _) => SetTheme("blocks"));
+        var sets = new Forms.ToolStripMenuItem("Çalışma setleri");
+        sets.DropDownOpening += (_, _) =>
+        {
+            sets.DropDownItems.Clear();
+            var list = _store!.GetSnapshots(true);
+            if (list.Count == 0) sets.DropDownItems.Add(new Forms.ToolStripMenuItem("Henüz set yok (Ayarlar > Düzenler)") { Enabled = false });
+            foreach (var snap in list) { var sid = snap.Id; sets.DropDownItems.Add(snap.Name!, null, (_, _) => ApplySnapshot(sid)); }
+        };
+        sets.DropDownItems.Add("...");
+        menu.Items.Add(sets);
+        menu.Items.Add("Bırakma tepsisi", null, (_, _) => { if (_win is { } w) w.ApplySettings(w.Settings with { ShowShelf = !w.Settings.ShowShelf }); });
         menu.Items.Add("Sistem monitörü", null, (_, _) => { if (_win is { } w) w.ApplySettings(w.Settings with { ShowSystemMonitor = !w.Settings.ShowSystemMonitor }); });
         menu.Items.Add("Ayarlar", null, (_, _) => _win?.OpenSettings());
         menu.Items.Add("Yeni dolap ekle", null, (_, _) => { try { AddCabinet(); } catch (DolapException ex) { _win?.ShowToast(ex.Message); } });
@@ -137,11 +149,61 @@ public partial class App : Application
         return w;
     }
 
+    /// <summary>Kullanici tepsi/kisayolla hepsini gizledi mi (calisma setindeki gorunurlukten bagimsiz).</summary>
+    public bool AllHidden { get; private set; }
     public void ToggleAll()
     {
-        if (_wins.Any(w => w.IsVisible)) { _wins.ForEach(w => w.Hide()); _monitor?.Hide(); } else ShowAll();
+        if (_wins.Any(w => w.IsVisible)) { AllHidden = true; _wins.ForEach(w => w.Hide()); _monitor?.Hide(); _shelf?.Hide(); } else ShowAll();
     }
-    public void ShowAll() { _wins.ForEach(w => w.ShowCabinet()); _monitor?.Show(); }
+    public void ShowAll()
+    {
+        AllHidden = false;
+        foreach (var w in _wins) if (w.Settings.Design.Visible) w.ShowCabinet(); else w.Hide();
+        _monitor?.Show(); _shelf?.Show();
+    }
+
+    // ---- calisma setleri ve zaman makinesi ----
+    string _lastLayout = "";
+    System.Windows.Threading.DispatcherTimer? _historyTimer;
+    /// <summary>Dakikada bir: yerlesim degistiyse otomatik gecmise anlik goruntu (son 30).</summary>
+    void StartHistory()
+    {
+        _lastLayout = System.Text.Json.JsonSerializer.Serialize(_store!.GetCabinets());
+        _historyTimer = new() { Interval = TimeSpan.FromMinutes(1) };
+        _historyTimer.Tick += (_, _) =>
+        {
+            var now = System.Text.Json.JsonSerializer.Serialize(_store!.GetCabinets());
+            if (now == _lastLayout) return;
+            _lastLayout = now;
+            try { _store.SaveSnapshot(null); } catch (Microsoft.Data.Sqlite.SqliteException) { }
+        };
+        _historyTimer.Start();
+    }
+
+    /// <summary>Kayitli yerlesimi uygular ve tum dolap pencerelerini yeniler.</summary>
+    public int ApplySnapshot(Guid id)
+    {
+        var n = _store!.RestoreSnapshot(id);
+        _lastLayout = System.Text.Json.JsonSerializer.Serialize(_store.GetCabinets());
+        foreach (var w in _wins) w.ReloadSettings();
+        if (!AllHidden) ShowAll();
+        return n;
+    }
+
+    public CollectionStore Store => _store!;
+
+    ShelfWindow? _shelf;
+    public MainWindow? FirstWindow => _win;
+    public void HideShelf() { if (_win is { } w) w.ApplySettings(w.Settings with { ShowShelf = false }); }
+    /// <summary>Ilk dolabin ayarina gore birakma tepsisini acar/kapatir.</summary>
+    public void SyncShelf(AppSettings s)
+    {
+        if (!s.ShowShelf) { _shelf?.Close(); _shelf = null; return; }
+        if (_shelf != null) return;
+        _shelf = new ShelfWindow(_store!);
+        _shelf.Changed += () => _wins.ForEach(w => w.Reload());
+        if (!AllHidden) _shelf.Show();
+    }
 
     MonitorWindow? _monitor;
     /// <summary>Ilk dolabin ayarina gore sistem monitorunu acar/kapatir ve konumlar.</summary>
