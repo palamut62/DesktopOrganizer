@@ -219,7 +219,31 @@ def stud(W=128, H=84):
     save("block_stud.png", rgb, mask)
 
 
+def tex_brushed_steel(W=1024, H=512):
+    """3B govde/on yuz icin yuksek cozunurluklu fircalanmis celik (yatay anizotropik cizikler, hafif egik isik bandi)."""
+    r = np.random.default_rng(101)
+    long_ = gaussian_filter1d(r.normal(size=(H, W)), 60, axis=1, mode="wrap"); long_ /= long_.std()
+    mid = gaussian_filter1d(r.normal(size=(H, W)), 12, axis=1, mode="wrap"); mid /= mid.std()
+    fine = gaussian_filter1d(r.normal(size=(H, W)), 2, axis=1, mode="wrap"); fine /= fine.std()
+    y, x = np.mgrid[0:H, 0:W] / np.array([H, W])[:, None, None]
+    band = 0.5 + 0.5 * np.cos((x * 0.9 + y * 0.35) * np.pi * 2)       # yumusak yansima bandi
+    lum = 0.37 + 0.06 * band + 0.009 * long_ + 0.008 * mid + 0.010 * fine
+    rgb = np.dstack([lum * 0.97, lum * 1.0, lum * 1.05])
+    save("tex_brushed_steel.png", rgb)
+
+
+def tex_abs_plastic(W=1024, H=512):
+    """Renk carpani icin neredeyse beyaz ABS plastik: ince portakal kabugu dokusu + mikro benekler."""
+    r = np.random.default_rng(202)
+    peel = gaussian_filter(r.normal(size=(H, W)), 3.0, mode="wrap"); peel /= peel.std()
+    speck = gaussian_filter(r.normal(size=(H, W)), 0.6, mode="wrap"); speck /= speck.std()
+    y = np.linspace(0, 1, H)[:, None]
+    lum = 0.90 + 0.04 * (1 - y) + 0.010 * peel + 0.006 * speck   # ustten hafif parlak
+    save("tex_abs_plastic.png", np.dstack([lum, lum, lum]))
+
+
 if __name__ == "__main__":
     metal_front(); metal_plate(); metal_handle(); metal_body(); tray()
     block_front(); block_body(); stud()
+    tex_brushed_steel(); tex_abs_plastic()
     print("ok ->", os.path.abspath(OUT))
