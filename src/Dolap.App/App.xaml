@@ -5,6 +5,7 @@
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Themes/Physical.xaml"/>
                 <ResourceDictionary Source="Themes/Shared.xaml"/>
             </ResourceDictionary.MergedDictionaries>
         </ResourceDictionary>

@@ -37,9 +37,9 @@ public sealed class ShortcutVm(Shortcut model, string categoryName) : Obs
             if (!_iconRequested)
             {
                 _iconRequested = true;
-                var path = Model.Kind == ShortcutKind.Url ? null : Model.SourceLinkPath ?? Model.Target;
+                var path = Model.SourceLinkPath ?? Model.Target; // URL icin kabuk varsayilan tarayici ikonunu verir
                 if (path != null)
-                    Task.Run(() => Native.ShellIcon(path)).ContinueWith(t =>
+                    Task.Run(() => Native.ShellIcon(path, 256)).ContinueWith(t =>
                     {
                         if (t.Result is { } img) Application.Current?.Dispatcher.Invoke(() => { _icon = img; Raise(nameof(Icon)); });
                     });
@@ -47,7 +47,9 @@ public sealed class ShortcutVm(Shortcut model, string categoryName) : Obs
             return _icon;
         }
     }
-    public string Fallback => Model.Kind switch { ShortcutKind.Url => "", ShortcutKind.Folder => "", _ => "" };
+    public string Fallback => Model.Kind switch { ShortcutKind.Url => "\uE774", ShortcutKind.Folder => "\uE8B7", ShortcutKind.File => "\uE8A5", _ => "\uE71D" };
+    /// <summary>Kart kosesindeki kucuk tur rozeti (uygulama icin yok).</summary>
+    public string KindGlyph => Model.Kind switch { ShortcutKind.Url => "\uE774", ShortcutKind.Folder => "\uE8B7", ShortcutKind.File => "\uE8A5", ShortcutKind.Lnk => "\uE71B", _ => "" };
 }
 
 public sealed class CategoryVm(Category model) : Obs
@@ -61,12 +63,15 @@ public sealed class CategoryVm(Category model) : Obs
     public bool IsOpen { get => _open; set => Set(ref _open, value); }
     public string Glyph => Icons.Glyph(Model.IconKey);
     public Brush Fill { get; private set; } = Brushes.Gray;
+    public Brush LabelBrush { get; private set; } = Brushes.White;
     public string Automation => $"{Name} cekmecesi, {Count} oge";
 
     public void Refresh()
     {
         Fill = Icons.Brush(Model.Color);
-        foreach (var n in new[] { nameof(Name), nameof(Glyph), nameof(Fill), nameof(Count), nameof(Automation), nameof(EmptyVisibility) }) Raise(n);
+        var color = (Color)ColorConverter.ConvertFromString(Model.Color);
+        LabelBrush = .2126 * color.R + .7152 * color.G + .0722 * color.B > 155 ? Brushes.Black : Brushes.White;
+        foreach (var n in new[] { nameof(Name), nameof(Glyph), nameof(Fill), nameof(LabelBrush), nameof(Count), nameof(Automation), nameof(EmptyVisibility) }) Raise(n);
     }
 }
 

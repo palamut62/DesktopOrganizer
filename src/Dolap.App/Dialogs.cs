@@ -13,6 +13,7 @@ public sealed record Field(string Label, string Initial, string[]? Choices = nul
 public partial class MainWindow
 {
     TaskCompletionSource<object?>? _modalTcs;
+    bool _searchOpen;
 
     Border Card(UIElement content, string? title = null)
     {
@@ -40,6 +41,7 @@ public partial class MainWindow
     void CloseModal(object? result)
     {
         ModalHost.Content = null;
+        _searchOpen = false;
         var t = _modalTcs; _modalTcs = null;
         t?.TrySetResult(result);
     }
@@ -121,7 +123,7 @@ public partial class MainWindow
         var key = Icons.All.First(i => i.Label == r[1]).Key; var hex = Icons.Colors.First(i => i.Name == r[2]).Hex;
         Guard(() =>
         {
-            if (c == null) _store.AddCategory(r[0], key, hex); else _store.UpdateCategory(c.Model.Id, r[0], key, hex);
+            if (c == null) _store.AddCategory(r[0], key, hex, _cabinetId); else _store.UpdateCategory(c.Model.Id, r[0], key, hex);
             LoadAll();
         });
     }
@@ -207,9 +209,14 @@ public partial class MainWindow
                 for (; d != null; d = VisualTreeHelper.GetParent(d))
                     if (d is ListBoxItem li) { Run(li.DataContext as ShortcutVm); break; }
         };
-        var sp = new StackPanel(); sp.Children.Add(tb); sp.Children.Add(lb);
+        var close = Btn("Kapat", CancelModal);
+        close.Margin = new(6, 0, 0, 0); close.MinWidth = 0; close.Padding = new(10, 4, 10, 4);
+        AutomationProperties.SetName(close, "Aramayı kapat");
+        var top = new DockPanel(); DockPanel.SetDock(close, Dock.Right); top.Children.Add(close); top.Children.Add(tb);
+        var sp = new StackPanel(); sp.Children.Add(top); sp.Children.Add(lb);
         _vm.Results.Clear();
         _ = RunModal(Card(sp), tb);
+        _searchOpen = true;
     }
 
     // ---------- ilk acilis / masaustu iceri aktarma ----------
@@ -228,7 +235,7 @@ public partial class MainWindow
         {
             if (_store.GetCategories().Count == 0)
                 foreach (var (n, i, c) in new[] { ("İş", "briefcase", "#D32F2F"), ("Geliştirme", "code", "#1E5BD8"), ("Medya", "play", "#F2B01E"), ("Arşiv", "archive", "#2E9E4F") })
-                    _store.AddCategory(n, i, c);
+                    _store.AddCategory(n, i, c, _cabinetId);
             LoadAll();
         });
         ApplySettings(s);

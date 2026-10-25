@@ -2,93 +2,25 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:c="clr-namespace:Dolap.App.Controls"
-        Title="Masaüstü Dolabı" Width="420" Height="800"
+        Title="Masaüstü Dolabı" Width="500" Height="800"
         WindowStyle="None" AllowsTransparency="True" Background="Transparent"
         ResizeMode="NoResize" ShowInTaskbar="False" UseLayoutRounding="True"
-        AutomationProperties.Name="Masaüstü Dolabı"
-        PreviewKeyDown="Window_PreviewKeyDown">
-    <Grid x:Name="Root" HorizontalAlignment="Left" VerticalAlignment="Top" Width="420">
+        AutomationProperties.Name="Masaüstü Dolabı" PreviewKeyDown="Window_PreviewKeyDown">
+    <Grid x:Name="Root" HorizontalAlignment="Left" VerticalAlignment="Bottom">
         <Grid.LayoutTransform><ScaleTransform x:Name="ScaleTf" ScaleX="1" ScaleY="1"/></Grid.LayoutTransform>
-
-        <StackPanel Effect="{DynamicResource CabinetShadow}">
-            <!-- Ust kapak + tutma alani -->
-            <Grid Height="58" Background="Transparent">
-                <Border Width="240" HorizontalAlignment="{Binding Align}" Background="{DynamicResource BodyBrush}"
-                        CornerRadius="{DynamicResource CornerTop}" BorderBrush="{DynamicResource BodyEdgeBrush}" BorderThickness="1,1,1,0" Margin="0,18,0,0">
-                    <Grid x:Name="Header" Background="Transparent" Cursor="SizeAll" MouseLeftButtonDown="Header_MouseDown"
-                          ToolTip="Surukleyerek tasiyin">
-                        <ContentControl ContentTemplate="{DynamicResource HeaderDecoration}" Content="x" HorizontalAlignment="Left" VerticalAlignment="Stretch" IsHitTestVisible="False" Focusable="False"/>
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,6,0" VerticalAlignment="Center">
-                            <Button Style="{StaticResource HeaderButtonStyle}" Content="&#xE721;" Click="Search_Click" ToolTip="Ara (Ctrl+F)" AutomationProperties.Name="Ara"/>
-                            <Button Style="{StaticResource HeaderButtonStyle}" Content="&#xE710;" Click="AddCategory_Click" ToolTip="Kategori ekle" AutomationProperties.Name="Kategori ekle"/>
-                            <Button Style="{StaticResource HeaderButtonStyle}" Content="&#xE713;" Click="Settings_Click" ToolTip="Ayarlar" AutomationProperties.Name="Ayarlar"/>
-                        </StackPanel>
-                    </Grid>
-                </Border>
-            </Grid>
-
-            <ScrollViewer x:Name="Scroller" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False">
-                <ItemsControl x:Name="Drawers" ItemsSource="{Binding Categories}" Focusable="False">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate>
-                            <Grid Width="420" Background="Transparent">
-                                <Border Width="240" HorizontalAlignment="{Binding DataContext.Align, RelativeSource={RelativeSource AncestorType=Window}}"
-                                        Background="{DynamicResource BodyBrush}" BorderBrush="{DynamicResource BodyEdgeBrush}" BorderThickness="1,0">
-                                </Border>
-                                <Grid Width="224" Margin="8,4" AllowDrop="True" DragEnter="Drawer_DragEnter" DragLeave="Drawer_DragLeave" Drop="Drawer_Drop"
-                                      HorizontalAlignment="{Binding DataContext.Align, RelativeSource={RelativeSource AncestorType=Window}}">
-                                    <Grid.RenderTransform><TranslateTransform X="{Binding SlideX, ElementName=Tray}"/></Grid.RenderTransform>
-                                    <StackPanel>
-                                        <c:DrawerTray x:Name="Tray" IsOpen="{Binding IsOpen}"
-                                                      Direction="{Binding DataContext.SlideDir, RelativeSource={RelativeSource AncestorType=Window}}">
-                                            <Border Background="{DynamicResource TrayBrush}" CornerRadius="4" Padding="4" Margin="0,0,0,2">
-                                                <StackPanel>
-                                                    <ScrollViewer MaxHeight="196" VerticalScrollBarVisibility="Auto" Focusable="False">
-                                                        <ItemsControl ItemsSource="{Binding Items}" Focusable="False">
-                                                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="4"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-                                                            <ItemsControl.ItemTemplate>
-                                                                <DataTemplate>
-                                                                    <Button Style="{StaticResource ItemButtonStyle}" Click="Item_Click" ToolTip="{Binding Subtitle}"
-                                                                            AutomationProperties.Name="{Binding Automation}" ContextMenuOpening="Item_ContextMenuOpening">
-                                                                        <Button.ContextMenu><ContextMenu/></Button.ContextMenu>
-                                                                    </Button>
-                                                                </DataTemplate>
-                                                            </ItemsControl.ItemTemplate>
-                                                        </ItemsControl>
-                                                    </ScrollViewer>
-                                                    <TextBlock Text="Buraya uygulama, dosya veya klasör bırakın." FontSize="11" Foreground="{DynamicResource MutedBrush}"
-                                                               TextWrapping="Wrap" Margin="6,8" Visibility="{Binding EmptyVisibility}"/>
-                                                    <Button Style="{StaticResource ModalButtonStyle}" Content="＋ Ekle" HorizontalAlignment="Left" Margin="2,4,0,0"
-                                                            Click="AddShortcut_Click" AutomationProperties.Name="Bu çekmeceye ekle"/>
-                                                </StackPanel>
-                                            </Border>
-                                        </c:DrawerTray>
-                                        <Button Style="{DynamicResource DrawerFrontStyle}" Click="Front_Click" AutomationProperties.Name="{Binding Automation}"
-                                                ContextMenuOpening="Front_ContextMenuOpening">
-                                            <Button.ContextMenu><ContextMenu/></Button.ContextMenu>
-                                        </Button>
-                                    </StackPanel>
-                                </Grid>
-                            </Grid>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </ScrollViewer>
-
-            <Grid Height="10">
-                <Border Width="240" HorizontalAlignment="{Binding Align}" Background="{DynamicResource BodyBrush}"
-                        CornerRadius="{DynamicResource CornerBottom}" BorderBrush="{DynamicResource BodyEdgeBrush}" BorderThickness="1,0,1,1"/>
-            </Grid>
-        </StackPanel>
-
-        <!-- Modal / arama / toast katmanlari: tam saydam alana dim konmaz -->
+        <ScrollViewer x:Name="Scroller" VerticalAlignment="Bottom" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Focusable="False" Background="{x:Null}">
+            <ScrollViewer.Resources><Style TargetType="ScrollBar" BasedOn="{StaticResource CabinetScrollBar}"/></ScrollViewer.Resources>
+            <c:CabinetScene x:Name="Scene" FrontClick="Front_Click" ItemClick="Item_Click" AddClick="AddShortcut_Click"
+                SearchClick="Search_Click" SettingsClick="Settings_Click" AddCategoryClick="AddCategory_Click"
+                FrontContext="Front_ContextMenuOpening" ItemContext="Item_ContextMenuOpening"
+                DrawerEnter="Drawer_DragEnter" DrawerLeave="Drawer_DragLeave" DrawerDrop="Drawer_Drop" HeaderDown="Header_MouseDown"/>
+        </ScrollViewer>
         <ContentControl x:Name="ModalHost" VerticalAlignment="Top" Margin="20,50,20,0" Focusable="False"/>
         <Border x:Name="Toast" VerticalAlignment="Bottom" Margin="20,0,20,16" Padding="12,8" CornerRadius="6"
                 Background="{StaticResource CardBrush}" BorderBrush="{StaticResource CardBorderBrush}" BorderThickness="1"
                 Visibility="{Binding ToastVisibility}" AutomationProperties.LiveSetting="Polite">
             <DockPanel>
-                <Button DockPanel.Dock="Right" Style="{StaticResource ModalButtonStyle}" Content="Geri al" Click="Undo_Click"
-                        Visibility="{Binding UndoVisibility}"/>
+                <Button DockPanel.Dock="Right" Style="{StaticResource ModalButtonStyle}" Content="Geri al" Click="Undo_Click" Visibility="{Binding UndoVisibility}"/>
                 <TextBlock Text="{Binding Toast}" Foreground="{StaticResource TextBrush}" TextWrapping="Wrap" VerticalAlignment="Center"/>
             </DockPanel>
         </Border>

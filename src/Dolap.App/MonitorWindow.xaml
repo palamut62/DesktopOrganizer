@@ -1,0 +1,149 @@
+<Window x:Class="Dolap.App.MonitorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Masaüstü Dolabı - Sistem monitörü" SizeToContent="WidthAndHeight"
+        WindowStyle="None" AllowsTransparency="True" Background="Transparent" ResizeMode="NoResize"
+        ShowInTaskbar="False" UseLayoutRounding="True" AutomationProperties.Name="Sistem monitörü">
+    <Window.Resources>
+        <FontFamily x:Key="Num">Bahnschrift, Segoe UI</FontFamily>
+        <Style x:Key="Label" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="#FF8FA3BF"/>
+            <Setter Property="FontSize" Value="11"/>
+        </Style>
+        <Style x:Key="Big" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{StaticResource Num}"/>
+            <Setter Property="FontSize" Value="24"/>
+            <Setter Property="Foreground" Value="#FFEAF2FF"/>
+        </Style>
+        <Style x:Key="Sub" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{StaticResource Num}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="#FF7E8FA8"/>
+        </Style>
+    </Window.Resources>
+
+    <!-- Duvara asili TV: kalin cerceve, cam yansima, alt kenarda guc LED'i -->
+    <Grid x:Name="Root" Margin="18,10,18,26">
+        <Grid.LayoutTransform><ScaleTransform x:Name="RootScale" ScaleX="1" ScaleY="1"/></Grid.LayoutTransform>
+        <!-- Golge ayri ve onbellekli: ekran icerigi her guncellendiginde bulanik golge yeniden hesaplanmaz -->
+        <Border CornerRadius="16" Background="#FF000000" Margin="4,10,4,-6" IsHitTestVisible="False">
+            <Border.CacheMode><BitmapCache/></Border.CacheMode>
+            <Border.Effect><BlurEffect Radius="26"/></Border.Effect>
+        </Border>
+        <Border x:Name="Bezel" Width="524" Height="324" CornerRadius="16" BorderThickness="1.5" BorderBrush="#FF34383F" Padding="13,13,13,20"
+                MouseLeftButtonDown="Bezel_MouseDown" Cursor="SizeAll" ToolTip="Sürükleyerek taşı">
+            <Border.Background>
+                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                    <GradientStop Color="#FF24272C" Offset="0"/>
+                    <GradientStop Color="#FF111315" Offset="0.5"/>
+                    <GradientStop Color="#FF0A0B0D" Offset="1"/>
+                </LinearGradientBrush>
+            </Border.Background>
+            <Grid>
+                <Border x:Name="Screen" CornerRadius="5" ClipToBounds="True" Cursor="Arrow">
+                    <Border.Background>
+                        <RadialGradientBrush Center="0.5,0.35" GradientOrigin="0.5,0.3" RadiusX="0.9" RadiusY="0.9">
+                            <GradientStop Color="#FF0F1A2B" Offset="0"/>
+                            <GradientStop Color="#FF060A11" Offset="1"/>
+                        </RadialGradientBrush>
+                    </Border.Background>
+                    <Grid Margin="16,12,16,12">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                        </Grid.RowDefinitions>
+                        <DockPanel>
+                            <TextBlock x:Name="Clock" DockPanel.Dock="Right" Style="{StaticResource Sub}" FontSize="13" Foreground="#FFB9C7DA"/>
+                            <TextBlock Text="Sistem durumu" Foreground="#FFEAF2FF" FontSize="14" FontWeight="SemiBold"/>
+                        </DockPanel>
+
+                        <!-- Dort olcum: deger + ince cubuk; renk tek anlam tasiyici degil, etiket hep yazili -->
+                        <UniformGrid Grid.Row="1" Columns="4" Margin="0,10,0,8">
+                            <StackPanel Margin="0,0,10,0">
+                                <TextBlock Text="İşlemci" Style="{StaticResource Label}"/>
+                                <TextBlock x:Name="CpuText" Style="{StaticResource Big}" Text="-"/>
+                                <Grid Height="4" Margin="0,4,0,0"><Border Background="#22FFFFFF" CornerRadius="2"/><Border x:Name="CpuBar" Background="#FF4FD1FF" CornerRadius="2" RenderTransformOrigin="0,0.5"><Border.RenderTransform><ScaleTransform ScaleX="0"/></Border.RenderTransform></Border></Grid>
+                            </StackPanel>
+                            <StackPanel Margin="0,0,10,0">
+                                <TextBlock Text="Ekran kartı" Style="{StaticResource Label}"/>
+                                <TextBlock x:Name="GpuText" Style="{StaticResource Big}" Text="-"/>
+                                <Grid Height="4" Margin="0,4,0,0"><Border Background="#22FFFFFF" CornerRadius="2"/><Border x:Name="GpuBar" Background="#FFA78BFA" CornerRadius="2" RenderTransformOrigin="0,0.5"><Border.RenderTransform><ScaleTransform ScaleX="0"/></Border.RenderTransform></Border></Grid>
+                            </StackPanel>
+                            <StackPanel Margin="0,0,10,0">
+                                <TextBlock Text="Bellek" Style="{StaticResource Label}"/>
+                                <TextBlock x:Name="RamText" Style="{StaticResource Big}" Text="-"/>
+                                <Grid Height="4" Margin="0,4,0,0"><Border Background="#22FFFFFF" CornerRadius="2"/><Border x:Name="RamBar" Background="#FF4ADE80" CornerRadius="2" RenderTransformOrigin="0,0.5"><Border.RenderTransform><ScaleTransform ScaleX="0"/></Border.RenderTransform></Border></Grid>
+                                <TextBlock x:Name="RamSub" Style="{StaticResource Sub}" Margin="0,3,0,0"/>
+                            </StackPanel>
+                            <StackPanel>
+                                <TextBlock Text="Disk" Style="{StaticResource Label}"/>
+                                <ItemsControl x:Name="Drives">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Margin="0,2,0,3">
+                                                <DockPanel>
+                                                    <TextBlock DockPanel.Dock="Right" Style="{StaticResource Sub}" Text="{Binding Label}"/>
+                                                    <TextBlock Text="{Binding Name}" Style="{StaticResource Sub}" Foreground="#FFD5DEEA"/>
+                                                </DockPanel>
+                                                <Grid Height="3" Margin="0,2,0,0">
+                                                    <Border Background="#22FFFFFF" CornerRadius="1.5"/>
+                                                    <Border Background="#FFFBBF24" CornerRadius="1.5" RenderTransformOrigin="0,0.5"><Border.RenderTransform><ScaleTransform ScaleX="{Binding Fraction}"/></Border.RenderTransform></Border>
+                                                </Grid>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </UniformGrid>
+
+                        <Grid Grid.Row="2">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="1.15*"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                            <!-- Son 60 saniyenin islemci egrisi -->
+                            <Grid Margin="0,4,14,0">
+                                <TextBlock Text="İşlemci, son 1 dakika" Style="{StaticResource Label}" VerticalAlignment="Top"/>
+                                <Border Margin="0,18,0,0" BorderBrush="#18FFFFFF" BorderThickness="0,0,0,1">
+                                    <Canvas x:Name="Chart" ClipToBounds="True">
+                                        <Polygon x:Name="CpuFill" Opacity="0.25"><Polygon.Fill><LinearGradientBrush StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#FF4FD1FF" Offset="0"/><GradientStop Color="#004FD1FF" Offset="1"/></LinearGradientBrush></Polygon.Fill></Polygon>
+                                        <Polyline x:Name="CpuLine" Stroke="#FF4FD1FF" StrokeThickness="1.6" StrokeLineJoin="Round"/>
+                                    </Canvas>
+                                </Border>
+                            </Grid>
+                            <StackPanel Grid.Column="1" Margin="0,4,0,0">
+                                <DockPanel Margin="0,0,0,4">
+                                    <TextBlock DockPanel.Dock="Right" Text="İşlemci   Bellek" Style="{StaticResource Label}"/>
+                                    <TextBlock Text="En yoğun süreçler" Style="{StaticResource Label}"/>
+                                </DockPanel>
+                                <ItemsControl x:Name="Procs">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <DockPanel Margin="0,1.5">
+                                                <TextBlock DockPanel.Dock="Right" Style="{StaticResource Sub}" Width="56" TextAlignment="Right" Text="{Binding Ram}"/>
+                                                <TextBlock DockPanel.Dock="Right" Style="{StaticResource Sub}" Width="44" TextAlignment="Right" Foreground="#FFB9E9FF" Text="{Binding Cpu}"/>
+                                                <TextBlock Text="{Binding Name}" Foreground="#FFD5DEEA" FontSize="11.5" TextTrimming="CharacterEllipsis"/>
+                                            </DockPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </Grid>
+                    </Grid>
+                </Border>
+                <!-- Cam yansimasi -->
+                <Border CornerRadius="5" IsHitTestVisible="False">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop Color="#16FFFFFF" Offset="0"/>
+                            <GradientStop Color="#05FFFFFF" Offset="0.38"/>
+                            <GradientStop Color="#00FFFFFF" Offset="0.39"/>
+                        </LinearGradientBrush>
+                    </Border.Background>
+                </Border>
+            </Grid>
+        </Border>
+        <!-- Alt cerceve: guc LED'i -->
+        <Ellipse x:Name="Led" Width="5" Height="5" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,7" Fill="#FF3BE07A" IsHitTestVisible="False">
+            <Ellipse.Effect><DropShadowEffect BlurRadius="6" ShadowDepth="0" Color="#FF3BE07A" Opacity="0.9"/></Ellipse.Effect>
+        </Ellipse>
+    </Grid>
+</Window>

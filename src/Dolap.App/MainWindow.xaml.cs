@@ -21,6 +21,7 @@ public partial class MainWindow : Window
     CategoryVm? _dragTarget;
     Shortcut? _undo;
     IntPtr _hwnd;
+    readonly bool _isolated;
     bool _dragging, _hiddenStrip;
     DateTime _insideSince = DateTime.UtcNow, _edgeSince = DateTime.MaxValue;
 
@@ -28,16 +29,36 @@ public partial class MainWindow : Window
     public bool ModalOpen => ModalHost.Content != null;
     public CollectionStore Store => _store;
 
-    public MainWindow(CollectionStore store)
+    readonly Guid _cabinetId;
+    public Guid CabinetId => _cabinetId;
+    public string CabinetName { get; private set; } = "";
+
+    public MainWindow(CollectionStore store, bool isolated = false, Guid? cabinetId = null)
     {
+        _isolated = isolated;
         _store = store;
-        Settings = store.LoadSettings();
+        _cabinetId = cabinetId ?? store.FirstCabinetId();
+        CabinetName = store.GetCabinets().FirstOrDefault(c => c.Id == _cabinetId)?.Name ?? "Dolap";
+        Settings = store.LoadEffective(_cabinetId);
+        App.ApplyTheme(Settings.ThemeId, Settings.ReduceMotion ?? !SystemParameters.ClientAreaAnimation, Settings.QualityProfile == "low");
         InitializeComponent();
+        Title = "Masaüstü Dolabı - " + CabinetName;
+        if (isolated) { ShowInTaskbar = true; Title = "Masaüstü Dolabı - İzole Doğrulama"; }
         DataContext = _vm;
         _toastTimer.Tick += (_, _) => { _toastTimer.Stop(); _vm.ToastVisible = false; _undo = null; _vm.HasUndo = false; };
         _dragOpenTimer.Tick += (_, _) => { _dragOpenTimer.Stop(); if (_dragTarget != null) OpenOnly(_dragTarget); };
         _hideTimer.Tick += (_, _) => AutoHideTick();
-        Deactivated += (_, _) => { if (!ModalOpen && !_dragging) CloseAll(); };
+        // Disari tiklamada kapanir ama 'son durum' olarak kaydedilmez; acilista kullanicinin biraktigi cekmece gelir.
+        Deactivated += (_, _) =>
+        {
+            if (_searchOpen) CancelModal();
+            if (!ModalOpen && !_dragging) { _quietClose = true; CloseAll(); _quietClose = false; }
+        };
+        Scene.ViewChanged += (yaw, pitch) => ApplySettings(Settings with { Yaw = yaw, Pitch = pitch });
+        Scene.ShortcutReordered += (src, target) => DropShortcut(src, target.Model.CategoryId, target.Model.Id);
+        Scene.ShortcutMoved += (src, cat) => DropShortcut(src, cat.Model.Id, null);
+        // Cekmece sayisi degisince sahne boyu degisir; pencere ona uyar.
+        Scene.SizeChanged += (_, _) => { if (!_dragging) PlaceWindow(); };
         SourceInitialized += OnSourceInitialized;
         Loaded += async (_, _) =>
         {
@@ -45,7 +66,7 @@ public partial class MainWindow : Window
             // gelistirme yardimcisi: --open <sira> cekmeceyi acik baslatir (ekran goruntusu icin)
             var args = Environment.GetCommandLineArgs();
             var k = Array.IndexOf(args, "--open");
-            if (k >= 0 && int.TryParse(args.ElementAtOrDefault(k + 1), out var n) && n < _vm.Categories.Count) _vm.Categories[n].IsOpen = true;
+            if (k >= 0 && int.TryParse(args.ElementAtOrDefault(k + 1), out var n) && n >= 0 && n < _vm.Categories.Count) _vm.Categories[n].IsOpen = true;
         };
         LoadAll();
     }
@@ -53,14 +74,14 @@ public partial class MainWindow : Window
     void OnSourceInitialized(object? s, EventArgs e)
     {
         _hwnd = new WindowInteropHelper(this).Handle;
-        Native.SetWindowLong(_hwnd, Native.GWL_EXSTYLE, Native.GetWindowLong(_hwnd, Native.GWL_EXSTYLE) | Native.WS_EX_TOOLWINDOW);
+        if (!_isolated) Native.SetWindowLong(_hwnd, Native.GWL_EXSTYLE, Native.GetWindowLong(_hwnd, Native.GWL_EXSTYLE) | Native.WS_EX_TOOLWINDOW);
         HwndSource.FromHwnd(_hwnd)!.AddHook(WndProc);
         ApplySettings(Settings, save: false);
     }
 
     IntPtr WndProc(IntPtr h, int msg, IntPtr w, IntPtr l, ref bool handled)
     {
-        if (msg == Native.WM_HOTKEY && w.ToInt32() == HotkeyId) { ToggleVisible(); handled = true; }
+        if (msg == Native.WM_HOTKEY && w.ToInt32() == HotkeyId) { (Application.Current as App)?.ToggleAll(); handled = true; }
         return IntPtr.Zero;
     }
 
@@ -69,14 +90,16 @@ public partial class MainWindow : Window
 
     void LoadAll()
     {
-        var openId = _vm.Categories.FirstOrDefault(c => c.IsOpen)?.Model.Id;
-        var cats = _store.GetCategories();
+        var openId = _vm.Categories.Count == 0 && !_loadedOnce ? Settings.OpenCategory : _vm.Categories.FirstOrDefault(c => c.IsOpen)?.Model.Id;
+        _loadedOnce = true;
+        var cats = _store.GetCategories(_cabinetId);
         var byCat = _store.GetShortcuts().GroupBy(s => s.CategoryId).ToDictionary(g => g.Key, g => g.ToList());
         _vm.Categories.Clear();
         _all = [];
         foreach (var c in cats)
         {
             var cv = new CategoryVm(c) { IsOpen = c.Id == openId };
+            cv.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(CategoryVm.IsOpen)) SaveOpenState(); };
             cv.Refresh();
             foreach (var s in byCat.GetValueOrDefault(c.Id) ?? [])
             {
@@ -86,6 +109,7 @@ public partial class MainWindow : Window
             cv.Refresh();
             _vm.Categories.Add(cv);
         }
+        Scene.SetCategories(_vm.Categories);
     }
 
     void Guard(Action a)
@@ -112,6 +136,17 @@ public partial class MainWindow : Window
     // ---------- cekmece ----------
     static CategoryVm Cat(object s) => (CategoryVm)((FrameworkElement)s).DataContext;
     static ShortcutVm Sc(object s) => (ShortcutVm)((FrameworkElement)s).DataContext;
+
+    bool _quietClose, _loadedOnce;
+    /// <summary>Son acik cekmeceyi dolaba yazar (tema/konum gibi acilista geri gelir).</summary>
+    void SaveOpenState()
+    {
+        if (_quietClose || _isolated) return;
+        var open = _vm.Categories.FirstOrDefault(c => c.IsOpen)?.Model.Id;
+        if (open == Settings.OpenCategory) return;
+        Settings = Settings with { OpenCategory = open };
+        Guard(() => _store.SaveEffective(_cabinetId, Settings));
+    }
 
     void OpenOnly(CategoryVm c) { foreach (var o in _vm.Categories) o.IsOpen = o == c; }
     void CloseAll() { foreach (var o in _vm.Categories) o.IsOpen = false; }
@@ -153,6 +188,22 @@ public partial class MainWindow : Window
 
     static MenuItem Mi(string header, Action a) { var m = new MenuItem { Header = header }; m.Click += (_, _) => a(); return m; }
 
+    /// <summary>Kisayolu hedef kisayolun yerine (ya da cekmecenin sonuna) koyar; gerekirse cekmece degistirir. Dosyaya dokunmaz.</summary>
+    void DropShortcut(ShortcutVm src, Guid toCategory, Guid? beforeId)
+    {
+        Guard(() =>
+        {
+            if (src.Model.CategoryId != toCategory) _store.MoveShortcut(src.Model.Id, toCategory);
+            if (beforeId is { } b)
+            {
+                var ids = _store.GetShortcuts(toCategory).Select(s => s.Id).Where(id => id != src.Model.Id).ToList();
+                ids.Insert(Math.Max(0, ids.IndexOf(b)), src.Model.Id);
+                _store.ReorderShortcuts(ids);
+            }
+            LoadAll();
+        });
+    }
+
     void MoveItem(ShortcutVm sv, int d)
     {
         var cat = _vm.Categories.First(c => c.Model.Id == sv.Model.CategoryId);
@@ -168,6 +219,17 @@ public partial class MainWindow : Window
         var b = (Button)s; var c = Cat(b); var cm = b.ContextMenu!; cm.Items.Clear();
         cm.Items.Add(Mi("Çekmeceyi aç/kapat", () => Front_Click(b, null!)));
         cm.Items.Add(Mi("Düzenle", async () => await EditCategory(c)));
+        var otherCabs = _store.GetCabinets().Where(x => x.Id != _cabinetId).ToList();
+        if (otherCabs.Count > 0)
+        {
+            var mc = new MenuItem { Header = "Başka dolaba taşı" };
+            foreach (var oc in otherCabs)
+            {
+                var target = oc;
+                mc.Items.Add(Mi(oc.Name, () => Guard(() => { _store.MoveCategoryToCabinet(c.Model.Id, target.Id); LoadAll(); (Application.Current as App)?.RefreshOthers(this, reload: true); })));
+            }
+            cm.Items.Add(mc);
+        }
         cm.Items.Add(Mi("Yukarı taşı", () => MoveCategory(c, -1)));
         cm.Items.Add(Mi("Aşağı taşı", () => MoveCategory(c, +1)));
         cm.Items.Add(Mi("Sil", async () => await DeleteCategory(c)));
@@ -224,16 +286,50 @@ public partial class MainWindow : Window
     {
         var prev = Settings;
         Settings = s;
-        if (save) Guard(() => _store.SaveSettings(s));
+        if (save) Guard(() => { _store.SaveEffective(_cabinetId, s); (Application.Current as App)?.RefreshOthers(this); });
         App.ApplyTheme(s.ThemeId, s.ReduceMotion ?? !SystemParameters.ClientAreaAnimation, s.QualityProfile == "low");
-        ScaleTf.ScaleX = ScaleTf.ScaleY = Math.Clamp(s.Scale, 0.75, 1.5);
-        _vm.Side = s.Edge == DockEdge.Left ? -1 : 1;
+        _vm.Side = SideOf(s);
+        Scene.SetView(s.Yaw, s.Pitch);
+        Scene.Configure(s.ThemeId, _vm.Side, s.ReduceMotion ?? !SystemParameters.ClientAreaAnimation, s.QualityProfile == "low");
         Topmost = s.AlwaysOnTop;
-        if (prev.StartWithWindows != s.StartWithWindows || !save) Guard(() => StartupService.Set(s.StartWithWindows));
-        RegisterHotkey();
+        Scene.Sounds = s.Sounds && !_isolated;
+        // Duvar kagidi ilk dolabin temasini ve yonunu izler.
+        if (!_isolated && _cabinetId == _store.FirstCabinetId())
+        {
+            DesktopIcons.SetVisible(!s.HideDesktopIcons);
+            (Application.Current as App)?.SyncMonitor(s);
+            if (s.ThemedWallpaper) (Application.Current as App)?.RefreshRoom(s);
+            else if (prev.ThemedWallpaper) _ = WallpaperService.Restore();
+        }
+        if (!_isolated)
+        {
+            if (prev.StartWithWindows != s.StartWithWindows || !save) Guard(() => StartupService.Set(s.StartWithWindows));
+            if (_cabinetId == _store.FirstCabinetId()) RegisterHotkey(); // global kisayolu yalniz ilk dolap kaydeder, hepsini acar/kapatir
+        }
         _hideTimer.IsEnabled = s.AutoHide && s.Edge != DockEdge.Free;
         _hiddenStrip = false;
         PlaceWindow();
+    }
+
+    /// <summary>+1: sag tarafa yaslanir (cekmeceler sola acilir). OpenDirection kenari ezer; serbest konumda ekran yarisina bakilir.</summary>
+    public static int SideOf(AppSettings s) => s.OpenDirection switch
+    {
+        OpenDirection.Left => 1,
+        OpenDirection.Right => -1,
+        _ => s.Edge switch { DockEdge.Left => -1, DockEdge.Right => 1, _ => s.FreeX < 0.5 ? -1 : 1 },
+    };
+
+    /// <summary>Genel ayar baska dolaptan degisti: diskten yeniden okuyup uygular (kaydetmeden).</summary>
+    public void ReloadSettings() => ApplySettings(_store.LoadEffective(_cabinetId), save: false);
+
+    public void Rename(string name)
+    {
+        Guard(() =>
+        {
+            var c = _store.GetCabinets().First(x => x.Id == _cabinetId);
+            _store.UpdateCabinet(c with { Name = name });
+            CabinetName = name.Trim(); Title = "Masaüstü Dolabı - " + CabinetName;
+        });
     }
 
     void RegisterHotkey()
@@ -253,24 +349,55 @@ public partial class MainWindow : Window
         return (sc, dx == 0 ? 1 : dx / 96.0);
     }
 
+    /// <summary>Duvar kagidindaki odada zemin cizgisi ekran yuksekliginin %70'inde (tools/gen_wallpapers.py HZ).
+    /// Ayak hizasi ufka yakinsa (uzak) dolap kuculur, ekranin altina yakinsa (yakin) buyur.</summary>
+    static double DepthFactor(System.Drawing.Rectangle bounds, double baseY)
+    {
+        var horizon = bounds.Top + bounds.Height * 0.70;
+        var t = Math.Clamp((baseY - horizon) / (bounds.Bottom - horizon), -0.3, 1);
+        return Math.Clamp(0.6 + 0.45 * t, 0.5, 1.05);
+    }
+
+    /// <summary>Ofis duvar kagidindaki zemin yamugu (gen_office.py: arka duvar x %13-%87, zemin %70'ten asagi genisler).
+    /// Govde, ayak hizasindaki zemin genisligine sigdirilir; yan duvarlarin icine gecmez.</summary>
+    int KeepOnFloor(int x, double baseY, System.Drawing.Rectangle b, double px)
+    {
+        var t = Math.Clamp((baseY - (b.Top + b.Height * 0.70)) / (b.Height * 0.30), 0, 1);
+        double floorL = b.Left + b.Width * (0.13 * (1 - t)), floorR = b.Left + b.Width * (0.87 + 0.13 * t);
+        double bodyL = x + Scene.BodyLeft * px, bodyR = x + Scene.BodyRight * px;
+        if (bodyL < floorL) x += (int)Math.Ceiling(floorL - bodyL);
+        else if (bodyR > floorR) x -= (int)Math.Ceiling(bodyR - floorR);
+        return x;
+    }
+
+    /// <summary>FreeY dolabin ayak hizasidir (calisma alanina gore 0..1); pencere ondan yukari dogru kurulur.</summary>
     void PlaceWindow()
     {
         if (_hwnd == IntPtr.Zero) return;
         var (sc, dpi) = CurrentScreen();
         var wa = sc.WorkingArea;
-        var scale = Math.Clamp(Settings.Scale, 0.75, 1.5);
-        int w = (int)Math.Round(420 * scale * dpi), h = (int)Math.Round(wa.Height * 0.88);
+        var baseY = wa.Top + Math.Clamp(Settings.FreeY, 0, 1) * wa.Height;
+        // Ofis odasinda dolap zeminde durur: ayak hizasi zemin-duvar cizgisinin (%70) altinda kalir.
+        var office = Settings.ThemedWallpaper && Settings.RoomStyle == "office";
+        if (office) baseY = Math.Max(baseY, sc.Bounds.Top + sc.Bounds.Height * 0.72);
+        var scale = Math.Clamp(Settings.Scale, 0.75, 1.5) * (Settings.DepthScale ? DepthFactor(sc.Bounds, baseY) : 1);
+        ScaleTf.ScaleX = ScaleTf.ScaleY = scale;
+        // Yukseklik sahne kadar (modal formlar sigsin diye en az 460 DIP); fazlasi seffaf ve tiklama gecirir.
+        int w = (int)Math.Round((double.IsNaN(Scene.Width) ? 500 : Scene.Width) * scale * dpi);
+        int h = Math.Min(wa.Height, (int)Math.Ceiling(Math.Max(Scene.Height, 460) * scale * dpi));
         int x = Settings.Edge switch
         {
             DockEdge.Left => wa.Left,
             DockEdge.Right => wa.Right - w,
             _ => wa.Left + (int)(Math.Clamp(Settings.FreeX, 0, 1) * Math.Max(0, wa.Width - w)),
         };
-        int y = wa.Top + (Settings.Edge == DockEdge.Free
-            ? (int)(Math.Clamp(Settings.FreeY, 0, 1) * Math.Max(0, wa.Height - h)) : (int)(wa.Height * 0.03));
+        // Pencerenin alttaki seffaf payi ekran disina tasabilir; dolap zemine kadar iner.
+        var slack = (int)(Scene.BottomSlack * scale * dpi);
+        int y = (int)baseY - (h - slack);
+        y = Math.Clamp(y, wa.Top - h / 4, Math.Max(wa.Top, wa.Bottom - h + slack));
         x = Math.Clamp(x, wa.Left, Math.Max(wa.Left, wa.Right - w));
-        // Calisma alaninin %80'i asilinca icerik kaydirilir.
-        Scroller.MaxHeight = Math.Max(120, Math.Min(h, wa.Height * 0.8) / dpi / scale - 50);
+        if (office) x = KeepOnFloor(x, baseY, sc.Bounds, scale * dpi);
+        Scroller.MaxHeight = Math.Max(120, wa.Height / dpi / scale);
         Native.SetWindowPos(_hwnd, IntPtr.Zero, x, y, w, h, Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
     }
 
@@ -289,7 +416,9 @@ public partial class MainWindow : Window
         var wa = sc.WorkingArea; int w = r.Right - r.Left, h = r.Bottom - r.Top;
         var edge = r.Left - wa.Left < 24 ? DockEdge.Left : wa.Right - r.Right < 24 ? DockEdge.Right : DockEdge.Free;
         var fx = wa.Width - w <= 0 ? 0 : (double)(r.Left - wa.Left) / (wa.Width - w);
-        var fy = wa.Height - h <= 0 ? 0 : (double)(r.Top - wa.Top) / (wa.Height - h);
+        // Kaydedilen dikey konum ayak hizasi: boyut derinlikle degisse de dolap birakildigi yerde durur.
+        var baseY = r.Bottom - Scene.BottomSlack * ScaleTf.ScaleY * CurrentScreen().Dpi;
+        var fy = wa.Height <= 0 ? 0 : (baseY - wa.Top) / wa.Height;
         ApplySettings(Settings with { Edge = edge, FreeX = Math.Clamp(fx, 0, 1), FreeY = Math.Clamp(fy, 0, 1), MonitorDevice = sc.DeviceName });
     }
 
@@ -304,6 +433,9 @@ public partial class MainWindow : Window
         Topmost = true; Topmost = Settings.AlwaysOnTop; // one cikar; surekli ustte kalmaz
         Activate();
     }
+
+    /// <summary>3B aciyi varsayilana animasyonla dondurur; bitince kaydedilir.</summary>
+    public void ResetView() => Scene.RotateTo(0, 0);
 
     public void ResetPosition() => ApplySettings(Settings with { Edge = DockEdge.Right, MonitorDevice = null, FreeX = 0.8, FreeY = 0.1 });
 
@@ -342,7 +474,8 @@ public partial class MainWindow : Window
         }
     }
 
-    void Search_Click(object s, RoutedEventArgs e) => ShowSearch();
+    // Arama dugmesi ac/kapa calisir.
+    void Search_Click(object s, RoutedEventArgs e) { if (_searchOpen) CancelModal(); else ShowSearch(); }
     void Settings_Click(object s, RoutedEventArgs e) => OpenSettings();
     async void AddCategory_Click(object s, RoutedEventArgs e) => await EditCategory(null);
     async void AddShortcut_Click(object s, RoutedEventArgs e) => await EditShortcut(null, Cat(s));

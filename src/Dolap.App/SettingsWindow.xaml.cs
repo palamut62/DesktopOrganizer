@@ -10,18 +10,43 @@ namespace Dolap.App;
 
 public partial class SettingsWindow : Window
 {
-    readonly MainWindow _main;
+    MainWindow _main;
     bool _loading = true;
+    static App? Host => Application.Current as App;
 
     public SettingsWindow(MainWindow main)
     {
         _main = main;
         InitializeComponent();
-        var s = main.Settings;
+        Cabs.ItemsSource = Host?.CabinetWindows.Select(w => w.CabinetName).ToList() ?? [main.CabinetName];
+        Cabs.SelectedIndex = Math.Max(0, Host?.CabinetWindows.ToList().IndexOf(main) ?? 0);
+        LoadFrom();
+        _loading = false;
+    }
+
+    /// <summary>Secili dolabin ayarlarini kontrollere yukler.</summary>
+    void LoadFrom()
+    {
+        _loading = true;
+        var s = _main.Settings;
+        CabName.Text = _main.CabinetName;
+        OpenDir.SelectedIndex = (int)s.OpenDirection;
         (s.ThemeId == "blocks" ? ThemeBlocks : ThemeMetal).IsChecked = true;
         ScaleSlider.Value = s.Scale;
         ReduceMotion.IsChecked = s.ReduceMotion ?? !SystemParameters.ClientAreaAnimation;
         LowQuality.IsChecked = s.QualityProfile == "low";
+        ThemedWp.IsChecked = s.ThemedWallpaper;
+        SoundsBox.IsChecked = s.Sounds;
+        HideIcons.IsChecked = s.HideDesktopIcons;
+        MonitorBox.IsChecked = s.ShowSystemMonitor;
+        MonitorSize.Value = s.MonitorScale; MonitorSizeText.Text = $"%{s.MonitorScale * 100:0}";
+        MonitorTheme.SelectedIndex = Math.Max(0, new[] { "dark", "wood", "silver", "neon" }.ToList().IndexOf(s.MonitorTheme));
+        DepthBox.IsChecked = s.DepthScale;
+        RoomStyle.SelectedIndex = s.RoomStyle == "classic" ? 1 : 0;
+        WindowBox.IsChecked = s.OfficeWindow;
+        LightsBox.SelectedIndex = Math.Max(0, new[] { "auto", "on", "off" }.ToList().IndexOf(s.CeilingLights));
+        WeatherBox.IsChecked = s.WeatherEnabled; CityBox.Text = s.WeatherCity; DeviceLocBox.IsChecked = s.WeatherUseDeviceLocation;
+        WeatherStatus.Text = Host?.WeatherStatus ?? "";
         AutoHide.IsChecked = s.AutoHide; AlwaysOnTop.IsChecked = s.AlwaysOnTop;
         CloseAfter.IsChecked = s.CloseAfterLaunch; StartWin.IsChecked = s.StartWithWindows;
         HotkeyBox.Text = s.Hotkey;
@@ -33,6 +58,90 @@ public partial class SettingsWindow : Window
         BackupInfo.Text = last == null ? "Henüz günlük yedek yok." : "Son günlük yedek: " + File.GetLastWriteTime(last).ToString("dd.MM.yyyy HH:mm") + "  (" + Paths.Backups + ")";
         _loading = false;
     }
+
+    void Cab_Changed(object s, System.Windows.Controls.SelectionChangedEventArgs e)
+    {
+        if (_loading || Host == null || Cabs.SelectedIndex < 0 || Cabs.SelectedIndex >= Host!.CabinetWindows.Count) return;
+        _main = Host!.CabinetWindows[Cabs.SelectedIndex];
+        LoadFrom();
+    }
+
+    void RefreshCabList(int select)
+    {
+        _loading = true;
+        Cabs.ItemsSource = Host!.CabinetWindows.Select(w => w.CabinetName).ToList();
+        Cabs.SelectedIndex = select;
+        _main = Host!.CabinetWindows[select];
+        _loading = false;
+        LoadFrom();
+    }
+
+    void AddCabinet_Click(object s, RoutedEventArgs e)
+    {
+        try { var w = Host!.AddCabinet(); RefreshCabList(Host!.CabinetWindows.ToList().IndexOf(w)); DataMsg.Text = ""; }
+        catch (DolapException ex) { _main.ShowToast(ex.Message); }
+    }
+
+    async void DeleteCabinet_Click(object s, RoutedEventArgs e)
+    {
+        if (Host!.CabinetWindows.Count < 2) { _main.ShowToast("Son dolap silinemez."); return; }
+        var target = _main;
+        target.ShowCabinet();
+        if (await target.Choose("Dolabı sil", $"\"{target.CabinetName}\" dolabı kaldırılsın mı? Kategorileri ve kısayolları diğer dolaba taşınır; hiçbir dosya silinmez.", "İptal", "Dolabı sil") != "Dolabı sil") return;
+        try { Host.RemoveCabinet(target); RefreshCabList(0); }
+        catch (DolapException ex) { Host!.CabinetWindows[0].ShowToast(ex.Message); }
+    }
+
+    void CabName_Commit(object s, RoutedEventArgs e)
+    {
+        if (_loading || string.IsNullOrWhiteSpace(CabName.Text) || CabName.Text.Trim() == _main.CabinetName) return;
+        _main.Rename(CabName.Text);
+        _loading = true;
+        var i = Cabs.SelectedIndex;
+        Cabs.ItemsSource = Host!.CabinetWindows.Select(w => w.CabinetName).ToList();
+        Cabs.SelectedIndex = i;
+        _loading = false;
+    }
+    void CabName_KeyDown(object s, KeyEventArgs e) { if (e.Key == Key.Enter) CabName_Commit(s, e); }
+
+    void OpenDir_Changed(object s, System.Windows.Controls.SelectionChangedEventArgs e) =>
+        Apply(x => x with { OpenDirection = (OpenDirection)Math.Max(0, OpenDir.SelectedIndex) });
+
+    // Monitor ayarlari geneldir: her zaman ilk dolap uzerinden kaydedilir.
+    void ApplyGlobal(Func<AppSettings, AppSettings> f)
+    {
+        if (_loading || Host?.CabinetWindows.FirstOrDefault() is not { } first) return;
+        first.ApplySettings(f(first.Settings));
+    }
+    static string SelectedTag(System.Windows.Controls.ComboBox c) => (string)((System.Windows.Controls.ComboBoxItem)c.SelectedItem).Tag;
+
+    void Room_Changed(object s, RoutedEventArgs e) => ApplyGlobal(x => x with
+    {
+        RoomStyle = SelectedTag(RoomStyle), OfficeWindow = WindowBox.IsChecked == true, CeilingLights = SelectedTag(LightsBox),
+        WeatherUseDeviceLocation = DeviceLocBox.IsChecked == true,
+        WeatherEnabled = WeatherBox.IsChecked == true && (DeviceLocBox.IsChecked == true || !string.IsNullOrWhiteSpace(CityBox.Text)),
+    });
+
+    async void WeatherUpdate_Click(object s, RoutedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(CityBox.Text) && DeviceLocBox.IsChecked != true) { WeatherStatus.Text = "Bir şehir yazın ya da bilgisayarın konumunu seçin."; return; }
+        WeatherBox.IsChecked = true;
+        ApplyGlobal(x => x with { WeatherEnabled = true, WeatherCity = CityBox.Text.Trim() });
+        if (Host?.CabinetWindows.FirstOrDefault() is { } first) Host.RefreshRoom(first.Settings, forceWeather: true);
+        WeatherStatus.Text = "Güncelleniyor...";
+        await Task.Delay(4000); // istek 10 sn zaman asimli; kisa beklemeden sonra durumu goster
+        WeatherStatus.Text = Host?.WeatherStatus ?? "";
+    }
+
+    void MonitorSize_Changed(object s, RoutedPropertyChangedEventArgs<double> e)
+    {
+        var v = Math.Round(e.NewValue * 20) / 20;
+        if (MonitorSizeText != null) MonitorSizeText.Text = $"%{v * 100:0}";
+        if (!MonitorSize.IsMouseCaptureWithin && !MonitorSize.IsKeyboardFocusWithin) return;
+        ApplyGlobal(x => x with { MonitorScale = v });
+    }
+    void MonitorTheme_Changed(object s, System.Windows.Controls.SelectionChangedEventArgs e) =>
+        ApplyGlobal(x => x with { MonitorTheme = (string)((System.Windows.Controls.ComboBoxItem)MonitorTheme.SelectedItem).Tag });
 
     void Apply(Func<AppSettings, AppSettings> f) { if (!_loading) _main.ApplySettings(f(_main.Settings)); }
 
@@ -46,7 +155,7 @@ public partial class SettingsWindow : Window
     }
     void Behavior_Click(object s, RoutedEventArgs e) => Apply(x => x with
     {
-        ReduceMotion = ReduceMotion.IsChecked, QualityProfile = LowQuality.IsChecked == true ? "low" : "standard",
+        ReduceMotion = ReduceMotion.IsChecked, ThemedWallpaper = ThemedWp.IsChecked == true, Sounds = SoundsBox.IsChecked == true, HideDesktopIcons = HideIcons.IsChecked == true, ShowSystemMonitor = MonitorBox.IsChecked == true, DepthScale = DepthBox.IsChecked == true, QualityProfile = LowQuality.IsChecked == true ? "low" : "standard",
         AutoHide = AutoHide.IsChecked == true, AlwaysOnTop = AlwaysOnTop.IsChecked == true,
         CloseAfterLaunch = CloseAfter.IsChecked == true, StartWithWindows = StartWin.IsChecked == true,
     });
@@ -54,6 +163,7 @@ public partial class SettingsWindow : Window
         Apply(x => x with { MonitorDevice = Monitors.SelectedIndex <= 0 ? null : (string)Monitors.SelectedItem });
     void EdgeLeft_Click(object s, RoutedEventArgs e) => Apply(x => x with { Edge = DockEdge.Left });
     void EdgeRight_Click(object s, RoutedEventArgs e) => Apply(x => x with { Edge = DockEdge.Right });
+    void ResetView_Click(object s, RoutedEventArgs e) => _main.ResetView();
     void Reset_Click(object s, RoutedEventArgs e) { _main.ResetPosition(); Monitors.SelectedIndex = 0; }
 
     void Hotkey_KeyDown(object s, KeyEventArgs e)
@@ -94,8 +204,7 @@ public partial class SettingsWindow : Window
             _main.ShowCabinet();
             if (await _main.Choose("Yedekten geri yükle", $"Yedek {c} kategori ve {n} kısayol içeriyor. Mevcut koleksiyonun yerine geçecek (önce otomatik yedeklenir).", "İptal", "Geri yükle") != "Geri yükle") return;
             _main.Store.ImportJson(d.FileName, Paths.Backups);
-            _main.ApplySettings(_main.Store.LoadSettings(), save: false);
-            _main.Reload();
+            Host?.CabinetWindows.ToList().ForEach(w => { w.ReloadSettings(); w.Reload(); });
             DataMsg.Text = "Geri yüklendi.";
         }
         catch (Exception ex) when (ex is DolapException or IOException) { DataMsg.Text = ex.Message; }

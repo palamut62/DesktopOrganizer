@@ -11,29 +11,40 @@
     <SolidColorBrush x:Key="ItemHoverBrush" Color="#33FFFFFF"/>
     <SolidColorBrush x:Key="ItemFocusBrush" Color="#FF6FB1FF"/>
 
-    <!-- Cekmece ikon karti: 56 genis, ikon + en fazla 2 satir etiket -->
+    <!-- Cekmece kisayolu: Windows masaustundeki gibi gercek kabuk ikonu + golgeli beyaz ad, secimde mavi vurgu -->
     <Style x:Key="ItemButtonStyle" TargetType="Button">
-        <Setter Property="Width" Value="52"/>
-        <Setter Property="Height" Value="62"/>
-        <Setter Property="Margin" Value="1"/>
-        <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+        <Setter Property="Width" Value="82"/>
+        <Setter Property="Height" Value="98"/>
+        <Setter Property="Margin" Value="2"/>
+        <Setter Property="Foreground" Value="White"/>
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="Bd" CornerRadius="5" Background="Transparent" BorderThickness="2" BorderBrush="Transparent">
-                        <StackPanel HorizontalAlignment="Center" Margin="0,3,0,0">
-                            <Grid Width="34" Height="34">
-                                <TextBlock Text="{Binding Fallback}" FontFamily="{StaticResource IconFont}" FontSize="24"
-                                           Foreground="{DynamicResource MutedBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                <Image Source="{Binding Icon}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality"/>
+                    <Border x:Name="Bd" CornerRadius="4" BorderThickness="1" BorderBrush="Transparent" Background="Transparent" Padding="2,6,2,2">
+                        <StackPanel HorizontalAlignment="Center">
+                            <Grid Width="52" Height="52">
+                                <TextBlock Text="{Binding Fallback}" FontFamily="{StaticResource IconFont}" FontSize="38"
+                                           Foreground="#FFE8EEF6" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <Image Source="{Binding Icon}" Stretch="Uniform" RenderOptions.BitmapScalingMode="Fant">
+                                    <Image.Effect><DropShadowEffect BlurRadius="5" ShadowDepth="1.5" Direction="270" Opacity="0.6" Color="Black"/></Image.Effect>
+                                </Image>
                             </Grid>
-                            <TextBlock Text="{Binding Name}" FontSize="10" TextWrapping="Wrap" TextAlignment="Center" MaxHeight="26"
-                                       TextTrimming="CharacterEllipsis" Foreground="{TemplateBinding Foreground}" Margin="0,2,0,0"/>
+                            <TextBlock Text="{Binding Name}" FontSize="12" TextWrapping="Wrap" TextAlignment="Center" MaxHeight="32"
+                                       TextTrimming="CharacterEllipsis" Foreground="{TemplateBinding Foreground}" Margin="0,4,0,0">
+                                <TextBlock.Effect><DropShadowEffect BlurRadius="3" ShadowDepth="1" Direction="315" Opacity="0.95" Color="Black"/></TextBlock.Effect>
+                            </TextBlock>
                         </StackPanel>
                     </Border>
                     <ControlTemplate.Triggers>
-                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="{DynamicResource ItemHoverBrush}"/></Trigger>
-                        <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource ItemFocusBrush}"/></Trigger>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="#3399CCFF"/>
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="#6699CCFF"/>
+                        </Trigger>
+                        <Trigger Property="IsPressed" Value="True"><Setter TargetName="Bd" Property="Background" Value="#5599CCFF"/></Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Bd" Property="Background" Value="#4499CCFF"/>
+                            <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource ItemFocusBrush}"/>
+                        </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
@@ -54,6 +65,28 @@
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="{DynamicResource ItemHoverBrush}"/></Trigger>
+                        <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource ItemFocusBrush}"/></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Dolap basligindaki yon oklari: basili tutulunca tekrarlar -->
+    <Style x:Key="HeaderRepeatStyle" TargetType="RepeatButton">
+        <Setter Property="Width" Value="26"/>
+        <Setter Property="Height" Value="26"/>
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RepeatButton">
+                    <Border x:Name="Bd" CornerRadius="13" Background="Transparent" BorderThickness="1.5" BorderBrush="Transparent" Margin="1,0">
+                        <TextBlock Text="{TemplateBinding Content}" FontFamily="{StaticResource IconFont}" FontSize="13" FontWeight="Bold"
+                                   Foreground="{TemplateBinding Foreground}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="{DynamicResource ItemHoverBrush}"/></Trigger>
+                        <Trigger Property="IsPressed" Value="True"><Setter TargetName="Bd" Property="Background" Value="#55FFFFFF"/></Trigger>
                         <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource ItemFocusBrush}"/></Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
