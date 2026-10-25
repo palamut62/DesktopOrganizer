@@ -38,7 +38,10 @@
             <CheckBox x:Name="HideIcons" Content="Uygulama açıkken masaüstü simgelerini gizle (dosyalar yerinde kalır)" Click="Behavior_Click"/>
             <CheckBox x:Name="LowQuality" Content="Düşük kaynak modu (gölgeleri azaltır)" Click="Behavior_Click"/>
         </StackPanel></TabItem>
-        <TabItem Header="Yerleşim"><StackPanel Margin="14">
+        <TabItem Header="Yerleşim"><ScrollViewer VerticalScrollBarVisibility="Auto"><StackPanel Margin="14">
+            <CheckBox x:Name="LockLayout" Content="Tüm dolaplarda sürükleme ve döndürmeyi kilitle" Click="Behavior_Click"/>
+            <CheckBox x:Name="SnapLayout" Content="Manyetik hizalama (tüm dolaplar)" Click="Behavior_Click"/>
+            <TextBlock Text="Yakındaki dolaplara ve ekran kenarlarına hizalar. Alt tuşuyla geçici olarak atlayabilirsiniz." TextWrapping="Wrap" Foreground="{StaticResource MutedBrush}" Margin="0,0,0,10"/>
             <TextBlock Text="Monitör" FontWeight="SemiBold"/>
             <ComboBox x:Name="Monitors" SelectionChanged="Monitor_Changed" AutomationProperties.Name="Monitör"/>
             <TextBlock Text="Kenar" FontWeight="SemiBold" Margin="0,14,0,0"/>
@@ -58,7 +61,7 @@
             <CheckBox x:Name="DepthBox" Content="Dikey konuma göre otomatik boyut (yukarıda küçük, aşağıda büyük)" Click="Behavior_Click" Margin="0,14,0,0"/>
             <CheckBox x:Name="AutoHide" Content="Otomatik gizle (kenarda ince bir tutamaç kalır)" Click="Behavior_Click" Margin="0,14,0,0"/>
             <CheckBox x:Name="AlwaysOnTop" Content="Her zaman üstte" Click="Behavior_Click"/>
-        </StackPanel></TabItem>
+        </StackPanel></ScrollViewer></TabItem>
         <TabItem Header="Davranış"><StackPanel Margin="14">
             <CheckBox x:Name="SoundsBox" Content="Çekmece açılma ve kapanma sesi" Click="Behavior_Click"/>
             <CheckBox x:Name="CloseAfter" Content="Başarılı başlatmadan sonra çekmeceyi kapat" Click="Behavior_Click"/>

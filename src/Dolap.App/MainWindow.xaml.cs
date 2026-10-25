@@ -1,8 +1,10 @@
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Dolap.Core;
 using Forms = System.Windows.Forms;
@@ -81,6 +83,15 @@ public partial class MainWindow : Window
 
     IntPtr WndProc(IntPtr h, int msg, IntPtr w, IntPtr l, ref bool handled)
     {
+        if (msg == 0x0216 && _dragging && Settings.MagneticSnap && !Settings.LayoutLocked
+            && !Keyboard.Modifiers.HasFlag(ModifierKeys.Alt)) // WM_MOVING: Alt temporarily bypasses attraction.
+        {
+            var rect = Marshal.PtrToStructure<Native.RECT>(l);
+            SnapWindow(ref rect);
+            Marshal.StructureToPtr(rect, l, false);
+            handled = true;
+            return new IntPtr(1);
+        }
         if (msg == Native.WM_HOTKEY && w.ToInt32() == HotkeyId) { (Application.Current as App)?.ToggleAll(); handled = true; }
         return IntPtr.Zero;
     }
@@ -289,6 +300,7 @@ public partial class MainWindow : Window
         if (save) Guard(() => { _store.SaveEffective(_cabinetId, s); (Application.Current as App)?.RefreshOthers(this); });
         App.ApplyTheme(s.ThemeId, s.ReduceMotion ?? !SystemParameters.ClientAreaAnimation, s.QualityProfile == "low");
         _vm.Side = SideOf(s);
+        Scene.LayoutLocked = s.LayoutLocked;
         Scene.SetView(s.Yaw, s.Pitch);
         Scene.Configure(s.ThemeId, _vm.Side, s.ReduceMotion ?? !SystemParameters.ClientAreaAnimation, s.QualityProfile == "low");
         Topmost = s.AlwaysOnTop;
@@ -389,6 +401,7 @@ public partial class MainWindow : Window
 
     void Header_MouseDown(object s, MouseButtonEventArgs e)
     {
+        if (Settings.LayoutLocked) { ShowToast("Yerleşim kilitli. Ayarlar > Yerleşim'den kilidi açabilirsiniz."); return; }
         if (e.ChangedButton != MouseButton.Left || e.ClickCount != 1) return;
         _dragging = true;
         Native.GetWindowRect(_hwnd, out var r0);
@@ -396,17 +409,59 @@ public partial class MainWindow : Window
         _dragging = false;
         Native.GetWindowRect(_hwnd, out var r);
         if (r.Left == r0.Left && r.Top == r0.Top) return; // tiklama surukleme degildir
+        SaveDraggedPosition(r);
+        // Depth scaling can change width after dropping. Reconcile against the final size.
+        if (Settings.MagneticSnap && !Keyboard.Modifiers.HasFlag(ModifierKeys.Alt))
+            for (var i = 0; i < 2; i++)
+            {
+                Native.GetWindowRect(_hwnd, out var current);
+                var aligned = current; SnapWindow(ref aligned);
+                if (aligned.Left == current.Left && aligned.Top == current.Top) break;
+                SaveDraggedPosition(aligned);
+            }
+    }
+
+    void SaveDraggedPosition(Native.RECT r)
+    {
         var sc = Forms.Screen.FromRectangle(new System.Drawing.Rectangle(r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top));
         var wa = sc.WorkingArea; int w = r.Right - r.Left, h = r.Bottom - r.Top;
-        var edge = r.Left - wa.Left < 24 ? DockEdge.Left : wa.Right - r.Right < 24 ? DockEdge.Right : DockEdge.Free;
+        var edge = Settings.MagneticSnap && !Keyboard.Modifiers.HasFlag(ModifierKeys.Alt)
+            ? Math.Abs(r.Left - wa.Left) < 2 ? DockEdge.Left : Math.Abs(wa.Right - r.Right) < 2 ? DockEdge.Right : DockEdge.Free
+            : DockEdge.Free;
         var fx = wa.Width - w <= 0 ? 0 : (double)(r.Left - wa.Left) / (wa.Width - w);
         // Kaydedilen dikey konum ayak hizasi: boyut derinlikle degisse de dolap birakildigi yerde durur.
-        var baseY = r.Bottom - Scene.BottomSlack * ScaleTf.ScaleY * CurrentScreen().Dpi;
+        var baseY = r.Bottom - Scene.BottomSlack * ScaleTf.ScaleY * VisualTreeHelper.GetDpi(this).DpiScaleY;
         var fy = wa.Height <= 0 ? 0 : (baseY - wa.Top) / wa.Height;
         ApplySettings(Settings with { Edge = edge, FreeX = Math.Clamp(fx, 0, 1), FreeY = Math.Clamp(fy, 0, 1), MonitorDevice = sc.DeviceName });
     }
 
     // ---------- gorunurluk (tepsi / kisayol) ----------
+    void SnapWindow(ref Native.RECT r)
+    {
+        var sc = Forms.Screen.FromRectangle(new System.Drawing.Rectangle(r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top));
+        var wa = sc.WorkingArea;
+        var dpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
+        var scale = ScaleTf.ScaleX * dpi;
+        // Use visible cabinet sides for spacing between cabinets, not transparent window margins.
+        var leftInset = Scene.BodyLeft * scale;
+        var rightInset = (r.Right - r.Left) - Scene.BodyRight * scale;
+        var footInset = Scene.BottomSlack * scale;
+        var moving = new LayoutRect(r.Left + leftInset, r.Top, r.Right - r.Left - leftInset - rightInset, r.Bottom - r.Top - footInset);
+        var neighbors = new List<LayoutRect>();
+        foreach (var other in (Application.Current as App)?.CabinetWindows ?? [])
+        {
+            if (other == this || !other.IsVisible || other._hiddenStrip || other._hwnd == IntPtr.Zero) continue;
+            Native.GetWindowRect(other._hwnd, out var n);
+            if (Forms.Screen.FromRectangle(new(n.Left, n.Top, n.Right - n.Left, n.Bottom - n.Top)).DeviceName != sc.DeviceName) continue;
+            var ns = other.ScaleTf.ScaleX * VisualTreeHelper.GetDpi(other).DpiScaleX;
+            neighbors.Add(new(n.Left + other.Scene.BodyLeft * ns, n.Top,
+                (other.Scene.BodyRight - other.Scene.BodyLeft) * ns, n.Bottom - n.Top - other.Scene.BottomSlack * ns));
+        }
+        var snapped = LayoutSnap.Apply(moving,
+            new(wa.Left + leftInset, wa.Top, wa.Width - leftInset - rightInset, wa.Height), neighbors, 18 * dpi, 12 * dpi);
+        var dx = (int)Math.Round(snapped.X - moving.X); var dy = (int)Math.Round(snapped.Y - moving.Y);
+        r.Left += dx; r.Right += dx; r.Top += dy; r.Bottom += dy;
+    }
     public void ToggleVisible() { if (IsVisible && !_hiddenStrip) Hide(); else ShowCabinet(); }
 
     public void ShowCabinet()

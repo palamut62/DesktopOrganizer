@@ -17,6 +17,22 @@ public sealed class CabinetScene : Grid
 {
     /// <summary>Dunya biriminden DIP'e sabit olcek: kadraj donus icin genisleyince dolap kuculmez, pencere buyur.</summary>
     public const double PixelsPerUnit = 1.2;
+    bool _layoutLocked;
+    public bool LayoutLocked
+    {
+        get => _layoutLocked;
+        set
+        {
+            _layoutLocked = value;
+            if (value)
+            {
+                _dragRotating = false; _rightDown = null; _rightRotated = false;
+                _velYaw = _velPitch = 0; _targetYaw = _yaw; _targetPitch = _pitch;
+                if (IsMouseCaptured) ReleaseMouseCapture();
+            }
+            foreach (var button in ArrowButtons) button.IsEnabled = !value;
+        }
+    }
     const double Pitch = 124, FrontWidth = 286;
     /// <summary>Cekmece cikis mesafesi; kutu derinliginden (168) kisa: arka duvar govde icinde kalir, cekmece kopmaz.</summary>
     public const double Travel = 150;
@@ -73,6 +89,7 @@ public sealed class CabinetScene : Grid
         _view.Cursor = Cursors.SizeAll;
         PreviewMouseLeftButtonDown += (_, e) =>
         {
+            if (LayoutLocked) return;
             if (Keyboard.Modifiers != ModifierKeys.Control && e.OriginalSource != _view) return;
             BeginRotate(e.GetPosition(this)); e.Handled = true;
         };
@@ -84,7 +101,7 @@ public sealed class CabinetScene : Grid
             if (_reordering) { UpdateDropTarget(); return; }
             if (_dragRotating) { RotateMove(p); return; }
             // Sag tik: 4 px'ten az hareket baglam menusu, fazlasi dondurme.
-            if (_rightDown is { } d && e.RightButton == MouseButtonState.Pressed && (p - d).Length > 4)
+            if (!LayoutLocked && _rightDown is { } d && e.RightButton == MouseButtonState.Pressed && (p - d).Length > 4)
             { _rightRotated = true; BeginRotate(d); RotateMove(p); }
         };
         PreviewMouseLeftButtonUp += (_, e) =>
@@ -375,6 +392,7 @@ public sealed class CabinetScene : Grid
     /// <summary>Animasyonla hedef aciya doner (sifirlama, klavye).</summary>
     public void RotateTo(double yaw, double pitch)
     {
+        if (LayoutLocked) return;
         _targetYaw = Math.Clamp(yaw, -YawLimit, YawLimit); _targetPitch = Math.Clamp(pitch, -PitchLimit, PitchLimit);
         _velYaw = _velPitch = 0;
         if (_reduceMotion) { _yaw = _targetYaw; _pitch = _targetPitch; UpdateCamera(); ViewChanged?.Invoke(_yaw, _pitch); }
@@ -383,6 +401,7 @@ public sealed class CabinetScene : Grid
 
     void BeginRotate(Point p)
     {
+        if (LayoutLocked) return;
         _dragRotating = true; _lastPos = p; _lastMove = DateTime.UtcNow;
         _targetYaw = _yaw; _targetPitch = _pitch; _velYaw = _velPitch = 0;
         CaptureMouse();
@@ -475,6 +494,7 @@ public sealed class CabinetScene : Grid
             var b = new RepeatButton { Content = glyph, Style = (Style)FindResource("HeaderRepeatStyle"), Delay = 250, Interval = 50,
                 ToolTip = name + " (basılı tut). Gövdeyi sürükleyerek de çevirebilirsin. Açıyı sıfırlamak: Ayarlar > Yerleşim." };
             AutomationProperties.SetName(b, name);
+            b.IsEnabled = !LayoutLocked;
             b.Click += (_, _) => RotateTo(_targetYaw + dy, _targetPitch + dp);
             arrows.Children.Add(b); ArrowButtons.Add(b);
         }

@@ -53,6 +53,8 @@ public sealed record AppSettings
     public string? MonitorScreen { get; init; }
     public bool HideDesktopIcons { get; init; }          // uygulama acikken masaustu simgeleri gizli (dosyalar yerinde)
     public bool Sounds { get; init; } = true;            // cekmece acilma/kapanma sesi
+    public bool LayoutLocked { get; init; }              // tum dolaplarda tasima/dondurme kilidi
+    public bool MagneticSnap { get; init; } = true;
     public bool FirstRunDone { get; init; }
 }
 

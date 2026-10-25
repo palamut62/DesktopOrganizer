@@ -44,6 +44,36 @@ public partial class MainWindow
         }
         await Task.Delay(250);
         Check(Scene.DrawerCount == 4, "Production window loads categories through its real store and viewmodel");
+        ApplySettings(Settings with { LayoutLocked = true, MagneticSnap = false });
+        var lockedAngles = Scene.TargetAngles;
+        Scene.RotateTo(35, 15);
+        Check(Scene.TargetAngles == lockedAngles && Scene.ArrowButtons.All(b => !b.IsEnabled), "Layout lock prevents rotation and disables arrows");
+        Check(_store.LoadEffective(_cabinetId).LayoutLocked && !_store.LoadEffective(_cabinetId).MagneticSnap, "Layout preferences persist through production settings");
+        Scene.DrawerButtons.ElementAt(0).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Check(_vm.Categories[0].IsOpen, "Locked cabinet still allows drawers to open");
+        ApplySettings(Settings with { LayoutLocked = false, MagneticSnap = true });
+        Check(Scene.ArrowButtons.All(b => b.IsEnabled), "Unlock restores rotation controls");
+        var screen = CurrentScreen().Screen.WorkingArea;
+        Native.GetWindowRect(_hwnd, out var originalRect);
+        var proposed = new Native.RECT { Left = screen.Left + 8, Top = screen.Top + 60,
+            Right = screen.Left + 8 + originalRect.Right - originalRect.Left,
+            Bottom = screen.Top + 60 + originalRect.Bottom - originalRect.Top };
+        var buffer = System.Runtime.InteropServices.Marshal.AllocHGlobal(System.Runtime.InteropServices.Marshal.SizeOf<Native.RECT>());
+        try
+        {
+            System.Runtime.InteropServices.Marshal.StructureToPtr(proposed, buffer, false);
+            _dragging = true; var handled = false;
+            WndProc(_hwnd, 0x0216, IntPtr.Zero, buffer, ref handled);
+            var snapped = System.Runtime.InteropServices.Marshal.PtrToStructure<Native.RECT>(buffer);
+            Check(handled && snapped.Left == screen.Left, "Native moving message snaps to the work-area edge");
+            ApplySettings(Settings with { MagneticSnap = false });
+            System.Runtime.InteropServices.Marshal.StructureToPtr(proposed, buffer, false); handled = false;
+            WndProc(_hwnd, 0x0216, IntPtr.Zero, buffer, ref handled);
+            Check(!handled && System.Runtime.InteropServices.Marshal.PtrToStructure<Native.RECT>(buffer).Left == proposed.Left,
+                "Disabling magnetic alignment leaves native movement untouched");
+        }
+        finally { _dragging = false; System.Runtime.InteropServices.Marshal.FreeHGlobal(buffer); }
+        ApplySettings(Settings with { MagneticSnap = true });
         Scene.DrawerButtons.ElementAt(1).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         await Task.Delay(450);
         Check(_vm.Categories[1].IsOpen && Scene.DrawerTravel(_vm.Categories[1]) > Controls.CabinetScene.Travel - 8, "Production Front_Click opens 3D drawer");

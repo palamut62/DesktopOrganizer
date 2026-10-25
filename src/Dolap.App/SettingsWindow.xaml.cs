@@ -37,6 +37,7 @@ public partial class SettingsWindow : Window
         LowQuality.IsChecked = s.QualityProfile == "low";
         ThemedWp.IsChecked = s.ThemedWallpaper;
         SoundsBox.IsChecked = s.Sounds;
+        LockLayout.IsChecked = s.LayoutLocked; SnapLayout.IsChecked = s.MagneticSnap;
         HideIcons.IsChecked = s.HideDesktopIcons;
         MonitorBox.IsChecked = s.ShowSystemMonitor;
         MonitorSize.Value = s.MonitorScale; MonitorSizeText.Text = $"%{s.MonitorScale * 100:0}";
@@ -132,6 +133,7 @@ public partial class SettingsWindow : Window
     }
     void Behavior_Click(object s, RoutedEventArgs e) => Apply(x => x with
     {
+        LayoutLocked = LockLayout.IsChecked == true, MagneticSnap = SnapLayout.IsChecked == true,
         ReduceMotion = ReduceMotion.IsChecked, ThemedWallpaper = ThemedWp.IsChecked == true, Sounds = SoundsBox.IsChecked == true, HideDesktopIcons = HideIcons.IsChecked == true, ShowSystemMonitor = MonitorBox.IsChecked == true, DepthScale = DepthBox.IsChecked == true, QualityProfile = LowQuality.IsChecked == true ? "low" : "standard",
         AutoHide = AutoHide.IsChecked == true, AlwaysOnTop = AlwaysOnTop.IsChecked == true,
         CloseAfterLaunch = CloseAfter.IsChecked == true, StartWithWindows = StartWin.IsChecked == true,
