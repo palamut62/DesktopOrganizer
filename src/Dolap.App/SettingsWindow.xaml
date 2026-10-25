@@ -55,7 +55,7 @@
                 <ComboBoxItem Content="Sağa açılır"/>
             </ComboBox>
             <TextBlock Text="Serbest konum için dolabın üst kapağından sürükleyin." Foreground="{StaticResource MutedBrush}" Margin="0,6,0,0"/>
-            <CheckBox x:Name="DepthBox" Content="Odadaki konuma göre otomatik boyut (uzakta küçük, yakında büyük)" Click="Behavior_Click" Margin="0,14,0,0"/>
+            <CheckBox x:Name="DepthBox" Content="Dikey konuma göre otomatik boyut (yukarıda küçük, aşağıda büyük)" Click="Behavior_Click" Margin="0,14,0,0"/>
             <CheckBox x:Name="AutoHide" Content="Otomatik gizle (kenarda ince bir tutamaç kalır)" Click="Behavior_Click" Margin="0,14,0,0"/>
             <CheckBox x:Name="AlwaysOnTop" Content="Her zaman üstte" Click="Behavior_Click"/>
         </StackPanel></TabItem>
@@ -76,31 +76,8 @@
             <TextBlock x:Name="BackupInfo" Foreground="{StaticResource MutedBrush}" Margin="0,12,0,0" TextWrapping="Wrap"/>
             <TextBlock x:Name="DataMsg" Margin="0,8,0,0" TextWrapping="Wrap"/>
         </StackPanel></TabItem>
-        <TabItem Header="Oda"><StackPanel Margin="14">
-            <TextBlock Text="Duvar kağıdı odası" FontWeight="SemiBold"/>
-            <ComboBox x:Name="RoomStyle" SelectionChanged="Room_Changed" AutomationProperties.Name="Oda stili">
-                <ComboBoxItem Content="Ofis odası (pencere, tavan ışıkları)" Tag="office"/>
-                <ComboBoxItem Content="Sade oda (temaya uygun)" Tag="classic"/>
-            </ComboBox>
-            <CheckBox x:Name="WindowBox" Content="Pencere (dışarısı saate ve havaya göre)" Click="Room_Changed" Margin="0,10,0,0"/>
-            <TextBlock Text="Tavan ışıkları" FontWeight="SemiBold" Margin="0,12,0,0"/>
-            <ComboBox x:Name="LightsBox" SelectionChanged="Room_Changed" AutomationProperties.Name="Tavan ışıkları">
-                <ComboBoxItem Content="Otomatik (akşam ve yağışlı havada yanar)" Tag="auto"/>
-                <ComboBoxItem Content="Hep açık" Tag="on"/>
-                <ComboBoxItem Content="Kapalı" Tag="off"/>
-            </ComboBox>
-            <CheckBox x:Name="WeatherBox" Content="Pencerede canlı hava durumunu göster" Click="Room_Changed" Margin="0,14,0,0"/>
-            <CheckBox x:Name="DeviceLocBox" Content="Bilgisayarın konumunu kullan (Windows konum hizmeti; yoksa aşağıdaki şehir)" Click="Room_Changed" Margin="0,6,0,0"/>
-            <DockPanel Margin="0,6,0,0">
-                <Button DockPanel.Dock="Right" Style="{StaticResource B}" Content="Kaydet ve güncelle" Click="WeatherUpdate_Click" Margin="6,0,0,0"/>
-                <TextBox x:Name="CityBox" AutomationProperties.Name="Şehir"/>
-            </DockPanel>
-            <TextBlock Text="Konum ya da şehir yalnız hava durumu için Open-Meteo'ya gönderilir; başka veri gönderilmez. 30 dakikada bir yenilenir." Foreground="{StaticResource MutedBrush}" FontSize="11" Margin="0,4,0,0" TextWrapping="Wrap"/>
-            <TextBlock x:Name="WeatherStatus" Margin="0,8,0,0" TextWrapping="Wrap"/>
-            <TextBlock Text="Oda, Görünüm sekmesindeki duvar kağıdı seçeneği açıkken uygulanır." Foreground="{StaticResource MutedBrush}" Margin="0,10,0,0" TextWrapping="Wrap"/>
-        </StackPanel></TabItem>
         <TabItem Header="Monitör"><StackPanel Margin="14">
-            <CheckBox x:Name="MonitorBox" Content="Sistem monitörünü göster (duvardaki TV: işlemci, ekran kartı, bellek, disk, süreçler)" Click="Behavior_Click"/>
+            <CheckBox x:Name="MonitorBox" Content="Sistem monitörünü göster (işlemci, ekran kartı, bellek, disk, süreçler)" Click="Behavior_Click"/>
             <TextBlock Text="Boyut" FontWeight="SemiBold" Margin="0,14,0,0"/>
             <Slider x:Name="MonitorSize" Minimum="0.6" Maximum="1.6" ValueChanged="MonitorSize_Changed" AutomationProperties.Name="Monitör boyutu"/>
             <TextBlock x:Name="MonitorSizeText" Foreground="{StaticResource MutedBrush}"/>

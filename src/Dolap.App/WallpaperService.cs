@@ -4,7 +4,7 @@ using Microsoft.Win32;
 
 namespace Dolap.App;
 
-/// <summary>Temaya uygun oda duvar kagidini uygular; ilk degisiklikten once kullanicinin orijinalini saklar, kapatilinca geri yukler.</summary>
+/// <summary>Temaya uygun statik duvar kagidini uygular; ilk degisiklikten once kullanicinin orijinalini saklar, kapatilinca geri yukler.</summary>
 static class WallpaperService
 {
     const string Key = @"Control Panel\Desktop";

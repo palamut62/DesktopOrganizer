@@ -42,11 +42,6 @@ public partial class SettingsWindow : Window
         MonitorSize.Value = s.MonitorScale; MonitorSizeText.Text = $"%{s.MonitorScale * 100:0}";
         MonitorTheme.SelectedIndex = Math.Max(0, new[] { "dark", "wood", "silver", "neon" }.ToList().IndexOf(s.MonitorTheme));
         DepthBox.IsChecked = s.DepthScale;
-        RoomStyle.SelectedIndex = s.RoomStyle == "classic" ? 1 : 0;
-        WindowBox.IsChecked = s.OfficeWindow;
-        LightsBox.SelectedIndex = Math.Max(0, new[] { "auto", "on", "off" }.ToList().IndexOf(s.CeilingLights));
-        WeatherBox.IsChecked = s.WeatherEnabled; CityBox.Text = s.WeatherCity; DeviceLocBox.IsChecked = s.WeatherUseDeviceLocation;
-        WeatherStatus.Text = Host?.WeatherStatus ?? "";
         AutoHide.IsChecked = s.AutoHide; AlwaysOnTop.IsChecked = s.AlwaysOnTop;
         CloseAfter.IsChecked = s.CloseAfterLaunch; StartWin.IsChecked = s.StartWithWindows;
         HotkeyBox.Text = s.Hotkey;
@@ -114,24 +109,6 @@ public partial class SettingsWindow : Window
         first.ApplySettings(f(first.Settings));
     }
     static string SelectedTag(System.Windows.Controls.ComboBox c) => (string)((System.Windows.Controls.ComboBoxItem)c.SelectedItem).Tag;
-
-    void Room_Changed(object s, RoutedEventArgs e) => ApplyGlobal(x => x with
-    {
-        RoomStyle = SelectedTag(RoomStyle), OfficeWindow = WindowBox.IsChecked == true, CeilingLights = SelectedTag(LightsBox),
-        WeatherUseDeviceLocation = DeviceLocBox.IsChecked == true,
-        WeatherEnabled = WeatherBox.IsChecked == true && (DeviceLocBox.IsChecked == true || !string.IsNullOrWhiteSpace(CityBox.Text)),
-    });
-
-    async void WeatherUpdate_Click(object s, RoutedEventArgs e)
-    {
-        if (string.IsNullOrWhiteSpace(CityBox.Text) && DeviceLocBox.IsChecked != true) { WeatherStatus.Text = "Bir şehir yazın ya da bilgisayarın konumunu seçin."; return; }
-        WeatherBox.IsChecked = true;
-        ApplyGlobal(x => x with { WeatherEnabled = true, WeatherCity = CityBox.Text.Trim() });
-        if (Host?.CabinetWindows.FirstOrDefault() is { } first) Host.RefreshRoom(first.Settings, forceWeather: true);
-        WeatherStatus.Text = "Güncelleniyor...";
-        await Task.Delay(4000); // istek 10 sn zaman asimli; kisa beklemeden sonra durumu goster
-        WeatherStatus.Text = Host?.WeatherStatus ?? "";
-    }
 
     void MonitorSize_Changed(object s, RoutedPropertyChangedEventArgs<double> e)
     {

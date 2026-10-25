@@ -52,6 +52,15 @@ internal static class DesignPreview
             try
             {
                 void Require(bool value, string name) { if (!value) throw new InvalidOperationException(name); results.Add("PASS " + name); }
+                var mesh = (System.Windows.Media.Media3D.MeshGeometry3D)CabinetMesh.Box(0, 0, 0, 100, 120, 80, CabinetMesh.Finish("#888888")).Geometry;
+                foreach (var axis in new[] { "side", "top" })
+                {
+                    var uv = Enumerable.Range(0, mesh.Positions.Count)
+                        .Where(i => axis == "side" ? mesh.Normals[i].X > .99 : mesh.Normals[i].Y > .99)
+                        .Select(i => mesh.TextureCoordinates[i]).ToArray();
+                    Require(uv.Length > 0 && uv.Max(p => p.X) - uv.Min(p => p.X) > .8 && uv.Max(p => p.Y) - uv.Min(p => p.Y) > .8,
+                        axis + " texture uses two dimensions instead of stretching a single row");
+                }
                 var identity = cats.Select(c => (c.Model.Id, Ids: string.Join(",", c.Items.Select(s => s.Model.Id)))).ToArray();
                 await Task.Delay(300);
                 await Capture("metal-closed");

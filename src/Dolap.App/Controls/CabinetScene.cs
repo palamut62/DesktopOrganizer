@@ -171,7 +171,7 @@ public sealed class CabinetScene : Grid
         var body = CabinetMesh.Finish(_blocks ? "#153873" : "#4A5058", _blocks ? 90 : 65, .55,
             _blocks ? CabinetMesh.Plastic() : CabinetMesh.BrushedSteel(), tint: _blocks);
         var edges = CabinetMesh.Finish(_blocks ? "#102B59" : "#191D23", 80, .35);
-        var chrome = CabinetMesh.Finish(_blocks ? "#22457C" : "#AEB8C4", 100, .95);
+        var chrome = CabinetMesh.Finish(_blocks ? "#22457C" : "#78828D", 85, .65);
         var dark = CabinetMesh.Finish("#0D1118", 15, .05);
         AddFloorShadow();
         var carcass = new Model3DGroup();
@@ -621,7 +621,7 @@ public sealed class CabinetScene : Grid
         model.Freeze(); _view.Children.Add(new ModelVisual3D { Content = model, Transform = transform ?? Transform3D.Identity });
     }
 
-    double TextureScale => _lowQuality ? 1.5 : 3;
+    double TextureScale => _lowQuality ? 1.5 : 4;
 
     void Host(FrameworkElement visual, MeshGeometry3D mesh, Transform3D? transform = null)
     {
@@ -630,8 +630,10 @@ public sealed class CabinetScene : Grid
         Viewport2DVisual3D.SetIsVisualHostMaterial(material, true);
         // Controls on surfaces participate in focus, input and accessibility normally.
         RenderOptions.SetCachingHint(visual, CachingHint.Cache);
+        TextOptions.SetTextFormattingMode(visual, TextFormattingMode.Ideal);
+        TextOptions.SetTextRenderingMode(visual, TextRenderingMode.Grayscale);
         RenderOptions.SetBitmapScalingMode(visual, _lowQuality ? BitmapScalingMode.LowQuality : BitmapScalingMode.HighQuality);
-        // 2D yuzeyler 3D'ye doku olarak basilir; LayoutTransform ile 2x buyuk cizilir ki yazi ve ikonlar net kalsin.
+        // Supersample text and icons before perspective filtering (4x standard, 1.5x low).
         var host = new Grid { LayoutTransform = new ScaleTransform(TextureScale, TextureScale), Cursor = Cursors.Arrow };
         host.Children.Add(visual);
         _view.Children.Add(new Viewport2DVisual3D { Geometry = mesh, Material = material, Visual = host, Transform = transform ?? Transform3D.Identity });

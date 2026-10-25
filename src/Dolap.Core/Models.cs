@@ -43,14 +43,8 @@ public sealed record AppSettings
     public double Yaw { get; init; }                          // 3B donus (derece), dolap basina
     public double Pitch { get; init; }                        // bakis yuksekligi farki (derece)
     public Guid? OpenCategory { get; init; }                  // son acik cekmece
-    public bool ThemedWallpaper { get; init; } = true;   // temaya uygun oda duvar kagidi
-    public string RoomStyle { get; init; } = "office";       // office: pencereli ofis | classic: tema duvar kagidi
-    public bool OfficeWindow { get; init; } = true;
-    public bool WeatherEnabled { get; init; }                 // acikken sehir Open-Meteo'ya gonderilir
-    public string WeatherCity { get; init; } = "";
-    public bool WeatherUseDeviceLocation { get; init; } = true; // Windows konum hizmeti; izin yoksa sehir kullanilir
-    public string CeilingLights { get; init; } = "auto";     // auto | on | off
-    public bool DepthScale { get; init; } = true;         // odadaki konuma gore boyut: uzakta kucuk, yakinda buyuk
+    public bool ThemedWallpaper { get; init; } = true;   // temaya uygun statik duvar kagidi
+    public bool DepthScale { get; init; } = true;         // dikey konuma gore boyut: yukarida kucuk, asagida buyuk
     public bool ShowSystemMonitor { get; init; } = true;  // duvardaki TV: canli sistem monitoru
     public double MonitorScale { get; init; } = 1.0;         // 0.6 - 1.6
     public string MonitorTheme { get; init; } = "dark";      // dark | wood | silver | neon

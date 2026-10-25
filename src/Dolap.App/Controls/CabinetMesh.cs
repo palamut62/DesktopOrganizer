@@ -39,6 +39,17 @@ internal static class CabinetMesh
             Triangle(mesh, c, f, g, x, y, w, h); Triangle(mesh, c, g, e, x, y, w, h);
             Triangle(mesh, new(x + w / 2, y + h / 2, z), g, f, x, y, w, h);
         }
+        // Project each face onto its own plane. XY mapping collapses side/top UVs
+        // to a line and stretches one texture row over the entire panel.
+        for (var i = 0; i < mesh.Positions.Count; i++)
+        {
+            var p = mesh.Positions[i]; var n = mesh.Normals[i];
+            mesh.TextureCoordinates[i] = Math.Abs(n.X) > .7
+                ? new Point((p.Z - z) / d, 1 - (p.Y - y) / h)
+                : Math.Abs(n.Y) > .7
+                    ? new Point((p.X - x) / w, (p.Z - z) / d)
+                    : new Point((p.X - x) / w, 1 - (p.Y - y) / h);
+        }
         mesh.Freeze();
         var model = new GeometryModel3D(mesh, material) { BackMaterial = material };
         model.Freeze(); return model;
@@ -72,14 +83,19 @@ internal static class CabinetMesh
         var u = Vector3D.CrossProduct(axis, Math.Abs(axis.Y) < .9 ? new(0, 1, 0) : new Vector3D(1, 0, 0)); u.Normalize();
         var v = Vector3D.CrossProduct(axis, u);
         var mesh = new MeshGeometry3D();
-        const int segments = 32;
+        const int segments = 48;
         for (var i = 0; i < segments; i++)
         {
             var a = i * Math.Tau / segments; var b = (i + 1) * Math.Tau / segments;
             var r1 = radius * (Math.Cos(a) * u + Math.Sin(a) * v);
             var r2 = radius * (Math.Cos(b) * u + Math.Sin(b) * v);
+            var sideStart = mesh.Positions.Count;
             Triangle(mesh, start + r1, end + r1, end + r2, 0, 0, 1, 1);
             Triangle(mesh, start + r1, end + r2, start + r2, 0, 0, 1, 1);
+            // Smooth only the barrel; end caps retain their crisp axial normal.
+            var n1 = r1 / radius; var n2 = r2 / radius;
+            var normals = new[] { n1, n1, n2, n1, n2, n2 };
+            for (var k = 0; k < normals.Length; k++) mesh.Normals[sideStart + k] = normals[k];
             Triangle(mesh, end, end + r2, end + r1, 0, 0, 1, 1);
             Triangle(mesh, start, start + r1, start + r2, 0, 0, 1, 1);
         }
@@ -99,7 +115,7 @@ internal static class CabinetMesh
     }
 
     static Brush? _steel, _plastic;
-    /// <summary>tools/gen_assets.py ile uretilen 1024x512 dokular; tek kez yuklenip paylasilir.</summary>
+    /// <summary>tools/gen_assets.py ile uretilen 2048x1024 dokular; tek kez yuklenip paylasilir.</summary>
     public static Brush BrushedSteel() => _steel ??= Texture("tex_brushed_steel.png");
     public static Brush Plastic() => _plastic ??= Texture("tex_abs_plastic.png");
 

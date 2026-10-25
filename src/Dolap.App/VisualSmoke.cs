@@ -72,6 +72,8 @@ public partial class MainWindow
         Check(!_vm.Categories[1].IsOpen && Scene.DrawerTravel(_vm.Categories[1]) == 0, "Production reduced-motion close is immediate");
         OpenSettings(); await Task.Delay(150);
         Check(_settingsWin is { IsLoaded: true }, "Production settings window loads with new resource dictionaries");
+        Check(_settingsWin!.FindName("RoomStyle") == null && _settingsWin.FindName("WeatherBox") == null,
+            "Removed room and weather controls are absent from production settings");
         _settingsWin!.Close();
         // Capture the production control, preserving alpha in the desktop's empty area.
         foreach (var theme in new[] { "metal", "blocks" })

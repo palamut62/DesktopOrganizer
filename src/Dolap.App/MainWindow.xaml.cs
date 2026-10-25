@@ -298,7 +298,7 @@ public partial class MainWindow : Window
         {
             DesktopIcons.SetVisible(!s.HideDesktopIcons);
             (Application.Current as App)?.SyncMonitor(s);
-            if (s.ThemedWallpaper) (Application.Current as App)?.RefreshRoom(s);
+            if (s.ThemedWallpaper) _ = WallpaperService.Apply(s.ThemeId, SideOf(s) < 0);
             else if (prev.ThemedWallpaper) _ = WallpaperService.Restore();
         }
         if (!_isolated)
@@ -349,25 +349,13 @@ public partial class MainWindow : Window
         return (sc, dx == 0 ? 1 : dx / 96.0);
     }
 
-    /// <summary>Duvar kagidindaki odada zemin cizgisi ekran yuksekliginin %70'inde (tools/gen_wallpapers.py HZ).
+    /// <summary>Statik arka plandaki taban gecisi ekran yuksekliginin %70'inde.
     /// Ayak hizasi ufka yakinsa (uzak) dolap kuculur, ekranin altina yakinsa (yakin) buyur.</summary>
     static double DepthFactor(System.Drawing.Rectangle bounds, double baseY)
     {
         var horizon = bounds.Top + bounds.Height * 0.70;
         var t = Math.Clamp((baseY - horizon) / (bounds.Bottom - horizon), -0.3, 1);
         return Math.Clamp(0.6 + 0.45 * t, 0.5, 1.05);
-    }
-
-    /// <summary>Ofis duvar kagidindaki zemin yamugu (gen_office.py: arka duvar x %13-%87, zemin %70'ten asagi genisler).
-    /// Govde, ayak hizasindaki zemin genisligine sigdirilir; yan duvarlarin icine gecmez.</summary>
-    int KeepOnFloor(int x, double baseY, System.Drawing.Rectangle b, double px)
-    {
-        var t = Math.Clamp((baseY - (b.Top + b.Height * 0.70)) / (b.Height * 0.30), 0, 1);
-        double floorL = b.Left + b.Width * (0.13 * (1 - t)), floorR = b.Left + b.Width * (0.87 + 0.13 * t);
-        double bodyL = x + Scene.BodyLeft * px, bodyR = x + Scene.BodyRight * px;
-        if (bodyL < floorL) x += (int)Math.Ceiling(floorL - bodyL);
-        else if (bodyR > floorR) x -= (int)Math.Ceiling(bodyR - floorR);
-        return x;
     }
 
     /// <summary>FreeY dolabin ayak hizasidir (calisma alanina gore 0..1); pencere ondan yukari dogru kurulur.</summary>
@@ -377,9 +365,6 @@ public partial class MainWindow : Window
         var (sc, dpi) = CurrentScreen();
         var wa = sc.WorkingArea;
         var baseY = wa.Top + Math.Clamp(Settings.FreeY, 0, 1) * wa.Height;
-        // Ofis odasinda dolap zeminde durur: ayak hizasi zemin-duvar cizgisinin (%70) altinda kalir.
-        var office = Settings.ThemedWallpaper && Settings.RoomStyle == "office";
-        if (office) baseY = Math.Max(baseY, sc.Bounds.Top + sc.Bounds.Height * 0.72);
         var scale = Math.Clamp(Settings.Scale, 0.75, 1.5) * (Settings.DepthScale ? DepthFactor(sc.Bounds, baseY) : 1);
         ScaleTf.ScaleX = ScaleTf.ScaleY = scale;
         // Yukseklik sahne kadar (modal formlar sigsin diye en az 460 DIP); fazlasi seffaf ve tiklama gecirir.
@@ -396,7 +381,6 @@ public partial class MainWindow : Window
         int y = (int)baseY - (h - slack);
         y = Math.Clamp(y, wa.Top - h / 4, Math.Max(wa.Top, wa.Bottom - h + slack));
         x = Math.Clamp(x, wa.Left, Math.Max(wa.Left, wa.Right - w));
-        if (office) x = KeepOnFloor(x, baseY, sc.Bounds, scale * dpi);
         Scroller.MaxHeight = Math.Max(120, wa.Height / dpi / scale);
         Native.SetWindowPos(_hwnd, IntPtr.Zero, x, y, w, h, Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
     }
