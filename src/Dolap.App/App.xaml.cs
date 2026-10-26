@@ -72,6 +72,7 @@ public partial class App : Application
         }
         foreach (var cab in _store.GetCabinets()) OpenCabinetWindow(cab.Id);
         BuildTray();
+        RefreshUsability();
         StartHistory();
         new Thread(() => { while (_showEvent.WaitOne()) Dispatcher.Invoke(ShowAll); }) { IsBackground = true }.Start();
     }
@@ -116,6 +117,10 @@ public partial class App : Application
         }
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Göster / Gizle", null, (_, _) => ToggleAll());
+        menu.Items.Add("Hızlı erişim / Toplu düzenle", null, (_, _) => _win?.OpenQuickAccess());
+        menu.Items.Add("Dolap Asistanı (OpenRouter)", null, (_, _) => OpenAssistant());
+        menu.Items.Add("Masaüstü dosyalarını Gezgin'de göster", null, (_, _) =>
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory)) { UseShellExecute = true }));
         menu.Items.Add("Metal Dolap", null, (_, _) => SetTheme("metal"));
         menu.Items.Add("Blok Dolap", null, (_, _) => SetTheme("blocks"));
         var sets = new Forms.ToolStripMenuItem("Çalışma setleri");
@@ -157,10 +162,13 @@ public partial class App : Application
         _wins.Clear();
         foreach (var window in previous) window.Close();
         _shelf?.Close(); _shelf = null;
+        _favorites?.Close(); _favorites = null;
+        foreach (var search in Windows.OfType<QuickAccessWindow>().ToArray()) search.Close();
         _monitor?.Close(); _monitor = null;
         AllHidden = false;
         foreach (var cabinet in _store.GetCabinets()) OpenCabinetWindow(cabinet.Id, isolated);
         _lastLayout = System.Text.Json.JsonSerializer.Serialize(_store.GetCabinets());
+        if (!isolated) RefreshUsability();
         return _win!;
     }
 
@@ -168,13 +176,14 @@ public partial class App : Application
     public bool AllHidden { get; private set; }
     public void ToggleAll()
     {
-        if (_wins.Any(w => w.IsVisible)) { AllHidden = true; _wins.ForEach(w => w.Hide()); _monitor?.Hide(); _shelf?.Hide(); } else ShowAll();
+        if (_wins.Any(w => w.IsVisible)) { AllHidden = true; _wins.ForEach(w => w.Hide()); _monitor?.Hide(); _shelf?.Hide(); _favorites?.Hide(); } else ShowAll();
     }
     public void ShowAll()
     {
         AllHidden = false;
         foreach (var w in _wins) if (w.Settings.Design.Visible) w.ShowCabinet(); else w.Hide();
         _monitor?.Show(); _shelf?.Show();
+        _favorites?.Show();
     }
 
     // ---- calisma setleri ve zaman makinesi ----
@@ -206,6 +215,39 @@ public partial class App : Application
     }
 
     public CollectionStore Store => _store!;
+
+    FavoritesWindow? _favorites;
+    AssistantWindow? _assistant;
+    public void OpenAssistant()
+    {
+        if (_assistant is { IsLoaded: true }) { _assistant.Activate(); return; }
+        if (_win == null) return;
+        _assistant = new AssistantWindow(_win); _assistant.Show();
+    }
+
+    public void RefreshAfterAssistant()
+    {
+        var cabinets = _store!.GetCabinets();
+        foreach (var old in _wins.Where(w => cabinets.All(c => c.Id != w.CabinetId)).ToArray()) { _wins.Remove(old); old.Close(); }
+        foreach (var c in cabinets.Where(c => _wins.All(w => w.CabinetId != c.Id))) OpenCabinetWindow(c.Id);
+        foreach (var w in _wins) { w.Reload(); w.ReloadSettings(); }
+        _win?.SyncDesktopInbox(force: true); RefreshUsability();
+    }
+    public void RefreshUsability()
+    {
+        if (_store == null) return;
+        _shelf?.Refresh();
+        if (_store.LoadUsability().Favorites.Count == 0) { _favorites?.Close(); _favorites = null; return; }
+        _favorites ??= new FavoritesWindow(_store);
+        _favorites.Refresh(); if (!AllHidden) _favorites.Show();
+    }
+
+    public void RepositionExtras()
+    {
+        _favorites?.Place();
+        if (_win is { } w && _monitor != null) _monitor.Place(w.Settings.MonitorX, w.Settings.MonitorY, w.Settings.MonitorScreen);
+        _shelf?.Place();
+    }
 
     ShelfWindow? _shelf;
     public MainWindow? FirstWindow => _win;

@@ -4,7 +4,7 @@ using Microsoft.Data.Sqlite;
 namespace Dolap.Core;
 
 /// <summary>SQLite saklama + kategori/kisayol is kurallari. Her duzenleme tek islemde (transaction) yazilir.</summary>
-public sealed class CollectionStore : IDisposable
+public sealed partial class CollectionStore : IDisposable
 {
     public const int MaxCategories = 50, MaxShortcuts = 2000, MaxCabinets = 6, SchemaVersion = 5, MaxLinkedItems = 200, MaxSnapshots = 30;
     static readonly JsonSerializerOptions Json = new() { WriteIndented = true };
@@ -119,13 +119,17 @@ public sealed class CollectionStore : IDisposable
             return l;
         }
     }
+    int _transactionDepth;
     void Tx(Action a)
     {
         lock (_gate)
         {
+            if (_transactionDepth > 0) { a(); return; }
             using var t = _db.BeginTransaction();
+            _transactionDepth++;
             try { a(); t.Commit(); }
             catch { t.Rollback(); throw; }
+            finally { _transactionDepth--; }
         }
     }
     static string Now() => DateTime.UtcNow.ToString("o");
@@ -168,10 +172,13 @@ public sealed class CollectionStore : IDisposable
             var root = Path.GetFullPath(folder).TrimEnd('\\') + "\\";
             static string Src(Shortcut s) => s.SourceLinkPath ?? s.Target;
             static string Key(string p) => Path.GetFullPath(p).ToLowerInvariant();
-            var existing = GetShortcuts(categoryId)
-                .Where(s => s.Kind != ShortcutKind.Url && Src(s).StartsWith(root, StringComparison.OrdinalIgnoreCase)
-                            && !Src(s)[root.Length..].Contains('\\'))
-                .ToList();
+            // Yollar '/' ya da '\' ile gelebilir; karsilastirmadan once normalize et.
+            static bool InRoot(string p, string root)
+            {
+                try { var f = Path.GetFullPath(p); return f.StartsWith(root, StringComparison.OrdinalIgnoreCase) && !f[root.Length..].Contains('\\'); }
+                catch (Exception e) when (e is ArgumentException or NotSupportedException or PathTooLongException) { return false; }
+            }
+            var existing = GetShortcuts(categoryId).Where(s => s.Kind != ShortcutKind.Url && InRoot(Src(s), root)).ToList();
             var want = entries.Take(MaxLinkedItems).ToDictionary(d => Key(d.SourceLinkPath ?? d.Target), d => d);
             foreach (var s in existing.Where(s => !want.ContainsKey(Key(Src(s)))))
             { Exec("DELETE FROM shortcuts WHERE id=$i", ("$i", s.Id.ToString())); removed++; }
@@ -473,10 +480,10 @@ public sealed class CollectionStore : IDisposable
     }
 
     sealed record Pack(int SchemaVersion, List<Category> Categories, List<Shortcut> Shortcuts, AppSettings Settings,
-        List<Cabinet>? Cabinets = null, List<LayoutSnapshot>? WorkSets = null);
+        List<Cabinet>? Cabinets = null, List<LayoutSnapshot>? WorkSets = null, UsabilitySettings? Usability = null);
 
     public void ExportJson(string path) => File.WriteAllText(path,
-        JsonSerializer.Serialize(new Pack(SchemaVersion, GetCategories(), GetShortcuts(), LoadGlobalSettings(), GetCabinets(), GetSnapshots(true)), Json));
+        JsonSerializer.Serialize(new Pack(SchemaVersion, GetCategories(), GetShortcuts(), LoadGlobalSettings(), GetCabinets(), GetSnapshots(true), LoadUsability()), Json));
 
     /// <summary>Paketi dogrular; (kategori, kisayol) sayisini doner. Mevcut veriye dokunmaz.</summary>
     public static (int Categories, int Shortcuts) PreviewJson(string path)
@@ -530,7 +537,9 @@ public sealed class CollectionStore : IDisposable
                 Exec("INSERT INTO snapshots VALUES($i,$n,$t,$d)", ("$i", set.Id.ToString()), ("$n", set.Name),
                     ("$t", set.CreatedAt.ToString("o")), ("$d", JsonSerializer.Serialize(set.Cabinets)));
             Exec("INSERT INTO settings VALUES('app',$v) ON CONFLICT(key) DO UPDATE SET value=$v", ("$v", JsonSerializer.Serialize(p.Settings)));
+            SaveUsability(p.Usability ?? new());
         });
+        _shortcutUndo.Clear();
     }
 
     static string RequireName(string n)

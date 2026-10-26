@@ -31,6 +31,14 @@ public class LinkedFolderTests
         Assert.Single(s.GetShortcuts(cat.Id));
     }
 
+    [Fact] public void Sync_RemovesVanished_WhenFolderUsesForwardSlashes()
+    {
+        using var s = new CollectionStore(":memory:");
+        var cat = s.AddCategory("P", "folder", "#f00");
+        s.SyncLinkedFolder(cat.Id, "C:/Proje", [new("a", ShortcutKind.File, @"C:/Proje\a.txt"), F("b.txt")]);
+        Assert.Equal((0, 1), s.SyncLinkedFolder(cat.Id, "C:/Proje", [F("b.txt")]));
+    }
+
     [Fact] public void Sync_RespectsItemCap()
     {
         using var s = new CollectionStore(":memory:");

@@ -37,6 +37,9 @@ public sealed class ShelfWindow : Window
         paste.Click += (_, _) => Paste();
         DockPanel.SetDock(close, Dock.Right); DockPanel.SetDock(paste, Dock.Right);
         title.Children.Add(close); title.Children.Add(paste);
+        var organize = new Button { Content = "Toplu düzenle", Margin = new(4) };
+        organize.Click += (_, _) => (Application.Current as App)?.FirstWindow?.OpenQuickAccess(CategoryId(_store));
+        DockPanel.SetDock(organize, Dock.Right); title.Children.Add(organize);
         title.Children.Add(new TextBlock { Text = "Bırakma tepsisi", Foreground = Brushes.White, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
         title.MouseLeftButtonDown += (_, e) => { if (e.ClickCount == 1) try { DragMove(); } catch (InvalidOperationException) { } };
         var body = new StackPanel(); body.Children.Add(title); body.Children.Add(_empty);
@@ -60,7 +63,7 @@ public sealed class ShelfWindow : Window
             Native.SetWindowLong(h, Native.GWL_EXSTYLE, Native.GetWindowLong(h, Native.GWL_EXSTYLE) | Native.WS_EX_TOOLWINDOW);
         };
         // shortcut: konum kaydedilmez, her acilista calisma alaninin alt ortasi; gerekirse ayarlara eklenir.
-        Loaded += (_, _) => { var wa = SystemParameters.WorkArea; Left = wa.Left + (wa.Width - ActualWidth) / 2; Top = wa.Bottom - ActualHeight - 12; };
+        Loaded += (_, _) => Place();
         Refresh();
     }
 
@@ -72,6 +75,8 @@ public sealed class ShelfWindow : Window
         store.SetLinkedFolder(created.Id, Marker);
         return created.Id;
     }
+
+    public void Place() { var wa = SystemParameters.WorkArea; Left = wa.Left + Math.Max(0, (wa.Width - ActualWidth) / 2); Top = Math.Max(wa.Top, wa.Bottom - ActualHeight - 12); }
 
     void AddInputs(IEnumerable<string> inputs)
     {
@@ -123,12 +128,12 @@ public sealed class ShelfWindow : Window
         {
             var target = c;
             var mi = new MenuItem { Header = $"{cabs.GetValueOrDefault(c.CabinetId)} / {c.Name}" };
-            mi.Click += (_, _) => { _store.MoveShortcut(s.Id, target.Id); Refresh(); Changed?.Invoke(); };
+            mi.Click += (_, _) => { _store.EditShortcuts("Tepsiden taşıma", () => _store.MoveShortcut(s.Id, target.Id)); Refresh(); Changed?.Invoke(); };
             move.Items.Add(mi);
         }
         cm.Items.Add(move);
         var remove = new MenuItem { Header = "Tepsiden kaldır (dosya silinmez)" };
-        remove.Click += (_, _) => { _store.RemoveShortcut(s.Id); Refresh(); };
+        remove.Click += (_, _) => { _store.EditShortcuts("Tepsiden kaldırma", () => _store.RemoveShortcut(s.Id)); Refresh(); Changed?.Invoke(); };
         cm.Items.Add(remove);
     }
 }

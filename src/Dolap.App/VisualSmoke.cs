@@ -24,7 +24,7 @@ internal static class VisualSmoke
         var window = new MainWindow(store, isolated: true);
         window.Loaded += async (_, _) =>
         {
-            try { await window.RunVisualSmoke(output); window.Close(); await ((App)Application.Current).RunRestoreSmoke(output); store.Dispose(); Application.Current.Shutdown(); }
+            try { await window.RunVisualSmoke(output); await window.RunUsabilitySmoke(output); window.Close(); await ((App)Application.Current).RunRestoreSmoke(output); store.Dispose(); Application.Current.Shutdown(); }
             catch (Exception ex) { File.AppendAllText(Path.Combine(output, "app-smoke.txt"), Environment.NewLine + ex); window.Close(); store.Dispose(); Application.Current.Shutdown(1); }
         };
         window.Show();

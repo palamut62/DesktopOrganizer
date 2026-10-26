@@ -161,16 +161,34 @@ public partial class MainWindow
             new("Parametreler", m?.Arguments ?? ""),
             new("Çalışma dizini", m?.WorkingDirectory ?? ""));
         if (r == null) return;
-        Guard(() =>
+        try
         {
             var d = ShortcutFactory.FromPath(r[0]);
             if (d.Kind != ShortcutKind.Lnk)
                 d = d with { Arguments = string.IsNullOrWhiteSpace(r[2]) ? null : r[2], WorkingDirectory = string.IsNullOrWhiteSpace(r[3]) ? null : r[3] };
             if (!string.IsNullOrWhiteSpace(r[1])) d = d with { DisplayName = r[1] };
-            if (sv != null) _store.UpdateShortcut(sv.Model.Id, d);
-            else if (_store.AddShortcut(into!.Model.Id, d) == null) ShowToast("Bu hedef bu kategoride zaten var.");
-            LoadAll();
-        });
+            var duplicate = _store.FindDuplicates(d, sv?.Model.Id);
+            if (duplicate.Count > 0)
+            {
+                var cats = _store.GetCategories().ToDictionary(c => c.Id);
+                var cabs = _store.GetCabinets().ToDictionary(c => c.Id);
+                var locations = string.Join("\n", duplicate.Take(5).Select(x => cabs[cats[x.CategoryId].CabinetId].Name + " / " + cats[x.CategoryId].Name));
+                if (await Choose("Bu hedef zaten var", locations, "İptal", "Yine de kaydet") != "Yine de kaydet") return;
+            }
+            var target = into?.Model.Id;
+            if (sv == null && _store.SuggestCategory(d) is { } suggested && suggested.Id != target)
+            {
+                var answer = await Choose("Yerleştirme önerisi", $"Bu dosya için önerilen çekmece: {suggested.Name}. Hangi çekmeceyi kullanalım?", "İptal", "Seçtiğim çekmece", "Önerilen çekmece");
+                if (answer is null or "İptal") return;
+                if (answer == "Önerilen çekmece") target = suggested.Id;
+            }
+            EditItems(sv == null ? "Kısayol eklendi" : "Kısayol düzenlendi", () =>
+            {
+                if (sv != null) _store.UpdateShortcut(sv.Model.Id, d);
+                else _store.AddShortcut(target!.Value, d, allowDuplicate: duplicate.Count > 0);
+            });
+        }
+        catch (Exception ex) when (ex is DolapException or IOException or UnauthorizedAccessException) { ShowToast(ex.Message); }
     }
 
     // ---------- arama ----------

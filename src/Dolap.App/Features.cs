@@ -164,7 +164,7 @@ public partial class MainWindow
         var known = _store.GetShortcuts(sv.Model.CategoryId).Select(s => s.Section).Where(s => s != null).Distinct().ToList();
         var r = await Form("Bölüm", "Kaydet", new Field("Bölüm adı (boş = bölümsüz)" + (known.Count > 0 ? "  Var olanlar: " + string.Join(", ", known) : ""), sv.Model.Section ?? ""));
         if (r == null) return;
-        Guard(() => { _store.SetSection(sv.Model.Id, r[0]); LoadAll(); });
+        EditItems("Bölüm değişti", () => _store.SetSection(sv.Model.Id, r[0]));
     }
 
     // ---------- hizli onizleme ----------

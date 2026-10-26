@@ -31,6 +31,7 @@ public partial class MainWindow
             });
             FileSystemEventHandler h = (_, _) => Queue();
             w.Created += h; w.Deleted += h; w.Renamed += (_, _) => Queue();
+            w.Error += (_, _) => Queue();
             w.EnableRaisingEvents = true;
             _watchers[id] = (folder, w, debounce);
         }
@@ -52,6 +53,7 @@ public partial class MainWindow
         {
             foreach (var p in Directory.EnumerateFileSystemEntries(folder))
             {
+                if (Path.GetExtension(p).ToLowerInvariant() is ".crdownload" or ".part" or ".tmp" or ".download") continue;
                 var attr = File.GetAttributes(p);
                 if (attr.HasFlag(FileAttributes.Hidden) || attr.HasFlag(FileAttributes.System)) continue;
                 try { drafts.Add(ShortcutFactory.FromPath(p)); }
@@ -60,10 +62,15 @@ public partial class MainWindow
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { ShowToast("Klasör okunamadı: " + e.Message); return; }
         (int Added, int Removed) r = default;
-        Guard(() => r = _store.SyncLinkedFolder(catId, folder, drafts.OrderBy(d => d.DisplayName, StringComparer.CurrentCultureIgnoreCase).ToList()));
+        var previousIds = _store.GetShortcuts(catId).Select(s => s.Id).ToHashSet();
+        var desktop = string.Equals(folder, Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), StringComparison.OrdinalIgnoreCase);
+        var ordered = desktop ? drafts.OrderByDescending(d => File.GetLastWriteTimeUtc(d.SourceLinkPath ?? d.Target)).ToList()
+            : drafts.OrderBy(d => d.DisplayName, StringComparer.CurrentCultureIgnoreCase).ToList();
+        Guard(() => r = _store.SyncLinkedFolder(catId, folder, ordered));
         if (r.Added + r.Removed == 0) { if (!quiet) ShowToast("Çekmece klasörle güncel."); return; }
         LoadAll();
         ShowToast($"Klasör eşitlendi: {r.Added} eklendi, {r.Removed} çıkarıldı (dosyalara dokunulmadı).");
+        if (desktop && r.Added > 0) QueueDesktopSort(_store.GetShortcuts(catId).Where(s => !previousIds.Contains(s.Id)).Select(s => s.Id));
     }
 
     void LinkFolder(CategoryVm c)
@@ -73,5 +80,20 @@ public partial class MainWindow
         Guard(() => _store.SetLinkedFolder(c.Model.Id, d.SelectedPath));
         SyncFolder(c.Model.Id, d.SelectedPath, quiet: false);
         LoadAll();
+    }
+
+    bool? _desktopInboxEnabled;
+    internal void SyncDesktopInbox(bool force = false)
+    {
+        if (_isolated) return;
+        var enabled = _store.LoadUsability().DesktopInbox;
+        if (!force && _desktopInboxEnabled == enabled) return;
+        _desktopInboxEnabled = enabled;
+        Guard(() =>
+        {
+            var inbox = _store.EnsureDesktopInbox(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory));
+            if (inbox != null) SyncFolder(inbox.Id, inbox.LinkedFolder!, quiet: true);
+            LoadAll(); (System.Windows.Application.Current as App)?.RefreshOthers(this, reload: true);
+        });
     }
 }

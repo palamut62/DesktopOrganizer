@@ -52,7 +52,9 @@ public partial class SettingsWindow : Window
         DepthBox.IsChecked = s.DepthScale;
         AutoHide.IsChecked = s.AutoHide; AlwaysOnTop.IsChecked = s.AlwaysOnTop;
         CloseAfter.IsChecked = s.CloseAfterLaunch; StartWin.IsChecked = s.StartWithWindows;
-        HotkeyBox.Text = s.Hotkey;
+        HotkeyBox.Text = s.Hotkey; QuickHotkeyBox.Text = _main.Store.LoadUsability().QuickHotkey;
+        DesktopInboxBox.IsChecked = _main.Store.LoadUsability().DesktopInbox;
+        AutoClassifyBox.IsChecked = _main.Store.LoadUsability().AutoClassifyDesktop;
         var names = new[] { "Birincil monitör" }.Concat(Forms.Screen.AllScreens.Select(x => x.DeviceName)).ToList();
         Monitors.ItemsSource = names;
         Monitors.SelectedItem = s.MonitorDevice != null && names.Contains(s.MonitorDevice) ? s.MonitorDevice : names[0];
@@ -225,10 +227,38 @@ public partial class SettingsWindow : Window
         if (m.HasFlag(ModifierKeys.Windows)) parts.Add("Win");
         parts.Add(k.ToString());
         var combo = string.Join("+", parts);
-        HotkeyBox.Text = combo; DataMsg.Text = "";
+        var quick = ReferenceEquals(s, QuickHotkeyBox);
+        var other = quick ? _main.Settings.Hotkey : _main.Store.LoadUsability().QuickHotkey;
+        if (combo == other) { DataMsg.Text = "Göster/gizle ve hızlı erişim için farklı tuşlar seçin."; return; }
+        DataMsg.Text = "";
+        if (quick)
+        {
+            _main.Store.SaveUsability(_main.Store.LoadUsability() with { QuickHotkey = combo });
+            QuickHotkeyBox.Text = combo; (Host?.FirstWindow ?? _main).ReloadSettings(); return;
+        }
+        HotkeyBox.Text = combo;
         Apply(x => x with { Hotkey = combo }); // cakisma varsa ana pencere uyari verir
     }
 
+    void Assistant_Click(object s, RoutedEventArgs e) => Host?.OpenAssistant();
+    void AutoClassify_Click(object s, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        var prefs = _main.Store.LoadUsability(); var enabled = AutoClassifyBox.IsChecked == true;
+        if (enabled && (string.IsNullOrWhiteSpace(prefs.AssistantModel) || string.IsNullOrWhiteSpace(AssistantCredentials.Read())))
+        {
+            AutoClassifyBox.IsChecked = false; _main.ShowToast("Önce Dolap Asistanı'nda API anahtarı ve model seçin."); Host?.OpenAssistant(); return;
+        }
+        _main.Store.SaveUsability(prefs with { AutoClassifyDesktop = enabled, DesktopInbox = enabled || prefs.DesktopInbox });
+        DesktopInboxBox.IsChecked = enabled || prefs.DesktopInbox;
+        (Host?.FirstWindow ?? _main).SyncDesktopInbox(force: true);
+    }
+    void DesktopInbox_Click(object s, RoutedEventArgs e)
+    {
+        if (_loading) return;
+        _main.Store.SaveUsability(_main.Store.LoadUsability() with { DesktopInbox = DesktopInboxBox.IsChecked == true });
+        (Host?.FirstWindow ?? _main).SyncDesktopInbox(force: true);
+    }
     async void Import_Click(object s, RoutedEventArgs e) { _main.ShowCabinet(); await _main.ShowImport(); }
 
     void Export_Click(object s, RoutedEventArgs e)

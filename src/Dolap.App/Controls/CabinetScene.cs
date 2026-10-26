@@ -548,14 +548,40 @@ public sealed class CabinetScene : Grid
             button.ToolTip = string.Join(Environment.NewLine, category.Items.Take(8).Select(x => "• " + x.Name))
                 + (category.Items.Count > 8 ? $"{Environment.NewLine}+{category.Items.Count - 8} öğe daha" : "");
         button.Click += (s, e) => FrontClick?.Invoke(s, e);
+        button.PreviewMouseWheel += (_, e) => { if (category.IsOpen && EntryCount(category) > 12) { ChangePage(category, e.Delta < 0 ? 1 : -1); e.Handled = true; } };
         button.ContextMenuOpening += (s, e) => FrontContext?.Invoke(s, e);
         _frontButtons.Add(button);
         WireDrop(button); return button;
     }
 
+    public Func<Guid, int>? ReadPage { get; set; }
+    public Action<Guid, int>? SavePage { get; set; }
+    static int EntryCount(CategoryVm c) => c.Items.Count + c.Items.Where(s => s.Model.Section != null).Select(s => s.Model.Section).Distinct(StringComparer.CurrentCultureIgnoreCase).Count();
+    int CurrentPage(CategoryVm c) => Math.Clamp(ReadPage?.Invoke(c.Model.Id) ?? 0, 0, Math.Max(0, (EntryCount(c) - 1) / 12));
+    internal void ChangePage(CategoryVm c, int delta)
+    {
+        var page = Math.Clamp(CurrentPage(c) + delta, 0, Math.Max(0, (EntryCount(c) - 1) / 12));
+        SavePage?.Invoke(c.Model.Id, page); Rebuild();
+    }
+
     FrameworkElement BuildTray(CategoryVm category)
     {
         var layout = new DockPanel { LastChildFill = true };
+        var pages = Math.Max(1, (EntryCount(category) + 11) / 12);
+        var page = CurrentPage(category);
+        if (pages > 1)
+        {
+            var paging = new StackPanel { Orientation = Orientation.Horizontal };
+            foreach (var delta in new[] { -1, 1 })
+            {
+                var direction = delta;
+                var b = new Button { Content = delta < 0 ? "‹" : "›", Padding = new(4, 0, 4, 0), IsEnabled = page + delta >= 0 && page + delta < pages };
+                AutomationProperties.SetName(b, delta < 0 ? "Önceki çekmece sayfası" : "Sonraki çekmece sayfası");
+                b.Click += (_, _) => ChangePage(category, direction); paging.Children.Add(b);
+            }
+            paging.Children.Insert(1, new TextBlock { Text = $"{page + 1}/{pages}", Foreground = Brushes.White, Margin = new(3, 0, 3, 0) });
+            DockPanel.SetDock(paging, Dock.Left); layout.Children.Add(paging);
+        }
         var add = new Button { Content = "+ Kısayol ekle", DataContext = category, Style = (Style)FindResource("ModalButtonStyle"), FontSize = 11, Padding = new(8, 1, 8, 1) };
         AutomationProperties.SetName(add, category.Name + " çekmecesine kısayol ekle"); add.Click += (s, e) => AddClick?.Invoke(s, e);
         DockPanel.SetDock(add, Dock.Right); layout.Children.Add(add);
@@ -569,7 +595,7 @@ public sealed class CabinetScene : Grid
     }
 
     /// <summary>Kisayollar dosya dolabindaki evrak gibi dik durur: 4 sutun, arka siralar biraz daha yuksekte.
-    /// shortcut: 3 siradan fazlasi (12+ oge) yukari dogru uzar, kaydirma yok; cok ogeli cekmecede sayfalama eklenmeli.</summary>
+    /// En fazla 12 kart/ayrac, daha fazlasi kaydedilen sayfalarda gosterilir.</summary>
     void BuildCards(CategoryVm category, DrawerPart part, double top)
     {
         const double W = 62, H = 74;
@@ -582,6 +608,7 @@ public sealed class CabinetScene : Grid
             { current = it.Model.Section; entries.Add((null, current)); }
             entries.Add((it, null));
         }
+        entries = entries.Skip(CurrentPage(category) * 12).Take(12).ToList();
         for (var i = 0; i < entries.Count; i++)
         {
             int col = i % 4, row = i / 4;

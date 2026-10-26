@@ -13,7 +13,7 @@ namespace Dolap.App;
 
 public partial class MainWindow : Window
 {
-    const int HotkeyId = 1;
+    const int HotkeyId = 1, QuickHotkeyId = 2;
     readonly CollectionStore _store;
     bool _closing;
     readonly MainVm _vm = new();
@@ -22,7 +22,6 @@ public partial class MainWindow : Window
     readonly Dictionary<Guid, DateTime> _lastLaunch = [];
     List<ShortcutVm> _all = [];
     CategoryVm? _dragTarget;
-    Shortcut? _undo;
     IntPtr _hwnd;
     readonly bool _isolated;
     bool _dragging, _hiddenStrip;
@@ -48,14 +47,15 @@ public partial class MainWindow : Window
         Title = "Masaüstü Dolabı - " + CabinetName;
         if (isolated) { ShowInTaskbar = true; Title = "Masaüstü Dolabı - İzole Doğrulama"; }
         DataContext = _vm;
-        _toastTimer.Tick += (_, _) => { _toastTimer.Stop(); _vm.ToastVisible = false; _undo = null; _vm.HasUndo = false; };
+        _toastTimer.Tick += (_, _) => { _toastTimer.Stop(); _vm.ToastVisible = false; _vm.HasUndo = false; };
         _dragOpenTimer.Tick += (_, _) => { _dragOpenTimer.Stop(); if (_dragTarget != null) OpenOnly(_dragTarget); };
         _hideTimer.Tick += (_, _) => AutoHideTick();
         // Disari tiklamada kapanir ama 'son durum' olarak kaydedilmez; acilista kullanicinin biraktigi cekmece gelir.
         Deactivated += (_, _) =>
         {
             if (_searchOpen) CancelModal();
-            if (!ModalOpen && !_dragging) { _quietClose = true; CloseAll(); _quietClose = false; }
+            // Izole dogrulamada baska pencerelerin odak almasi testleri rastgele bozmasin.
+            if (!ModalOpen && !_dragging && !_isolated) { _quietClose = true; CloseAll(); _quietClose = false; }
         };
         Scene.ViewChanged += (yaw, pitch) => { if (!_closing) ApplySettings(Settings with { Yaw = yaw, Pitch = pitch }); };
         Scene.ShortcutReordered += (src, target) => DropShortcut(src, target.Model.CategoryId, target.Model.Id);
@@ -76,6 +76,8 @@ public partial class MainWindow : Window
             var k = Array.IndexOf(args, "--open");
             if (k >= 0 && int.TryParse(args.ElementAtOrDefault(k + 1), out var n) && n >= 0 && n < _vm.Categories.Count) _vm.Categories[n].IsOpen = true;
         };
+        Scene.ReadPage = id => _store.LoadUsability().DrawerPages.GetValueOrDefault(id);
+        Scene.SavePage = (id, page) => Guard(() => _store.SaveDrawerPage(id, page));
         LoadAll();
     }
 
@@ -98,6 +100,8 @@ public partial class MainWindow : Window
             handled = true;
             return new IntPtr(1);
         }
+        if (msg == 0x007E) Dispatcher.BeginInvoke(() => { PlaceWindow(); if (!_isolated) (Application.Current as App)?.RepositionExtras(); }); // WM_DISPLAYCHANGE, retain saved monitor identity
+        if (msg == Native.WM_HOTKEY && w.ToInt32() == QuickHotkeyId) { OpenQuickAccess(); handled = true; }
         if (msg == Native.WM_HOTKEY && w.ToInt32() == HotkeyId) { (Application.Current as App)?.ToggleAll(); handled = true; }
         return IntPtr.Zero;
     }
@@ -144,11 +148,35 @@ public partial class MainWindow : Window
         _toastTimer.Stop(); _toastTimer.Interval = TimeSpan.FromSeconds(undo ? 10 : 4); _toastTimer.Start();
     }
 
-    void Undo_Click(object s, RoutedEventArgs e)
+    void Undo_Click(object s, RoutedEventArgs e) => Guard(() =>
     {
-        if (_undo == null) return;
-        Guard(() => { _store.Restore(_undo); LoadAll(); });
-        _undo = null; _vm.ToastVisible = false; _vm.HasUndo = false;
+        ShowToast(_store.UndoShortcutEdit() ? "Son kısayol işlemi geri alındı." : "Geri alınacak işlem yok.");
+        RefreshCollection();
+    });
+
+    void EditItems(string label, Action action) => Guard(() =>
+    {
+        _store.EditShortcuts(label, action); RefreshCollection(); ShowToast(label, undo: _store.UndoLabel != null);
+    });
+
+    public void RefreshCollection()
+    {
+        LoadAll(); (Application.Current as App)?.RefreshOthers(this, reload: true);
+        (Application.Current as App)?.RefreshUsability();
+    }
+
+    public void RevealCategory(Guid id)
+    {
+        ShowCabinet();
+        if (_vm.Categories.FirstOrDefault(c => c.Model.Id == id) is { } category) OpenOnly(category);
+    }
+
+    QuickAccessWindow? _quickWindow;
+    public void OpenQuickAccess(Guid? category = null)
+    {
+        if (ModalOpen) { ShowToast("Önce açık formu tamamlayın veya iptal edin."); return; }
+        _quickWindow?.Close();
+        _quickWindow = new QuickAccessWindow(this, category); _quickWindow.Show();
     }
 
     // ---------- cekmece ----------
@@ -187,23 +215,21 @@ public partial class MainWindow : Window
         cm.Items.Add(Mi("Aç", () => LaunchItem(sv)));
         cm.Items.Add(Mi("Önizle (Boşluk)", () => ShowPreview(sv)));
         cm.Items.Add(Mi("Düzenle", async () => await EditShortcut(sv)));
+        cm.Items.Add(Mi(_store.LoadUsability().Favorites.Contains(sv.Model.Id) ? "Favorilerden kaldır" : "Favorilere ekle", () => Guard(() => { _store.ToggleFavorite(sv.Model.Id); (Application.Current as App)?.RefreshUsability(); })));
+        cm.Items.Add(Mi("Çoklu seç / toplu düzenle", () => OpenQuickAccess(sv.Model.CategoryId)));
         cm.Items.Add(Mi("Bölüm…", async () => await EditSection(sv)));
         var move = new MenuItem { Header = "Başka kategoriye taşı" };
         foreach (var c in _vm.Categories.Where(c => c.Model.Id != sv.Model.CategoryId))
         {
             var target = c;
-            move.Items.Add(Mi(c.Name, () => Guard(() => { _store.MoveShortcut(sv.Model.Id, target.Model.Id); LoadAll(); })));
+            move.Items.Add(Mi(c.Name, () => EditItems("Kısayol taşındı", () => _store.MoveShortcut(sv.Model.Id, target.Model.Id))));
         }
         move.IsEnabled = move.Items.Count > 0;
         cm.Items.Add(move);
         cm.Items.Add(Mi("Sola taşı", () => MoveItem(sv, -1)));
         cm.Items.Add(Mi("Sağa taşı", () => MoveItem(sv, +1)));
         if (sv.Model.Kind != ShortcutKind.Url) cm.Items.Add(Mi("Dosya konumunu aç", () => ShellLauncher.RevealInExplorer(sv.Model)));
-        cm.Items.Add(Mi("Kaldır", () => Guard(() =>
-        {
-            _undo = _store.RemoveShortcut(sv.Model.Id); LoadAll();
-            ShowToast($"\"{sv.Name}\" çekmeceden kaldırıldı (dosya silinmedi).", undo: true);
-        })));
+        cm.Items.Add(Mi("Kaldır", () => EditItems("Kısayol kaldırıldı (dosya silinmedi)", () => _store.RemoveShortcut(sv.Model.Id))));
     }
 
     static MenuItem Mi(string header, Action a) { var m = new MenuItem { Header = header }; m.Click += (_, _) => a(); return m; }
@@ -211,7 +237,7 @@ public partial class MainWindow : Window
     /// <summary>Kisayolu hedef kisayolun yerine (ya da cekmecenin sonuna) koyar; gerekirse cekmece degistirir. Dosyaya dokunmaz.</summary>
     void DropShortcut(ShortcutVm src, Guid toCategory, Guid? beforeId)
     {
-        Guard(() =>
+        EditItems("Kısayol taşındı", () =>
         {
             if (src.Model.CategoryId != toCategory) _store.MoveShortcut(src.Model.Id, toCategory);
             if (beforeId is { } b)
@@ -231,7 +257,7 @@ public partial class MainWindow : Window
         var i = ids.IndexOf(sv.Model.Id); var j = i + d;
         if (j < 0 || j >= ids.Count) return;
         (ids[i], ids[j]) = (ids[j], ids[i]);
-        Guard(() => { _store.ReorderShortcuts(ids); LoadAll(); });
+        EditItems("Kısayol sırası değişti", () => _store.ReorderShortcuts(ids));
     }
 
     void Front_ContextMenuOpening(object s, ContextMenuEventArgs e)
@@ -251,6 +277,8 @@ public partial class MainWindow : Window
             cm.Items.Add(mc);
         }
         cm.Items.Add(Mi("Tümünü aç", async () => await LaunchAll(c)));
+        cm.Items.Add(Mi("Çoklu seç / toplu düzenle", () => OpenQuickAccess(c.Model.Id)));
+        cm.Items.Add(Mi("Son kısayol işlemini geri al", () => Undo_Click(this, new())));
         if (c.Model.LinkedFolder?.StartsWith(SmartPrefix) == true)
             cm.Items.Add(Mi("Şimdi güncelle", () => RefreshSmart(c.Model.Id, c.Model.LinkedFolder[SmartPrefix.Length..])));
         else if (string.IsNullOrEmpty(c.Model.LinkedFolder))
@@ -296,20 +324,30 @@ public partial class MainWindow : Window
     }
 
     /// <summary>Kaynaklara dokunmaz; basarili/atlanan/basarisiz sayilarini ayri bildirir.</summary>
-    void AddMany(CategoryVm cat, IEnumerable<string> inputs)
+    async void AddMany(CategoryVm cat, IEnumerable<string> inputs)
     {
-        int ok = 0, dup = 0, fail = 0;
-        foreach (var i in inputs)
+        var drafts = new List<ShortcutDraft>(); int fail = 0;
+        foreach (var input in inputs)
+            try { drafts.Add(ShortcutFactory.FromPath(input)); }
+            catch (Exception ex) when (ex is DolapException or IOException or UnauthorizedAccessException) { fail++; }
+        var duplicateCount = drafts.Count(d => _store.FindDuplicates(d).Count > 0);
+        bool include = false;
+        if (duplicateCount > 0)
         {
-            try
-            {
-                if (_store.AddShortcut(cat.Model.Id, ShortcutFactory.FromPath(i)) == null) dup++; else ok++;
-            }
-            catch (DolapException) { fail++; }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { fail++; }
+            var answer = await Choose("Yinelenen kısayollar", $"{duplicateCount} hedef dolaplarda zaten var. Tekrarları atlayabilirsiniz.", "İptal", "Tekrarları atla", "Yine de ekle");
+            if (answer is null or "İptal") return;
+            include = answer == "Yine de ekle";
         }
-        LoadAll();
-        ShowToast($"{ok} eklendi, {dup} zaten vardı (atlandı), {fail} eklenemedi.");
+        int ok = 0, skipped = 0;
+        EditItems("Kısayollar eklendi", () =>
+        {
+            foreach (var d in drafts)
+            {
+                if (!include && _store.FindDuplicates(d).Count > 0) { skipped++; continue; }
+                if (_store.AddShortcut(cat.Model.Id, d, allowDuplicate: include) != null) ok++; else skipped++;
+            }
+        });
+        ShowToast($"{ok} eklendi, {skipped} tekrar atlandı, {fail} okunamadı.", undo: _store.UndoLabel != null);
     }
 
     // ---------- konum / ayarlar ----------
@@ -332,6 +370,7 @@ public partial class MainWindow : Window
         // Duvar kagidi ilk dolabin temasini ve yonunu izler.
         if (!_isolated && _cabinetId == _store.FirstCabinetId())
         {
+            SyncDesktopInbox();
             DesktopIcons.SetVisible(!s.HideDesktopIcons);
             (Application.Current as App)?.SyncMonitor(s);
             (Application.Current as App)?.SyncShelf(s);
@@ -357,7 +396,12 @@ public partial class MainWindow : Window
     };
 
     /// <summary>Genel ayar baska dolaptan degisti: diskten yeniden okuyup uygular (kaydetmeden).</summary>
-    public void ReloadSettings() => ApplySettings(_store.LoadEffective(_cabinetId), save: false);
+    public void ReloadSettings()
+    {
+        CabinetName = _store.GetCabinets().FirstOrDefault(c => c.Id == _cabinetId)?.Name ?? CabinetName;
+        Title = "Masaüstü Dolabı - " + CabinetName;
+        ApplySettings(_store.LoadEffective(_cabinetId), save: false);
+    }
 
     public void Rename(string name)
     {
@@ -372,6 +416,10 @@ public partial class MainWindow : Window
     void RegisterHotkey()
     {
         Native.UnregisterHotKey(_hwnd, HotkeyId);
+        Native.UnregisterHotKey(_hwnd, QuickHotkeyId);
+        var quick = _store.LoadUsability().QuickHotkey;
+        if (Hotkeys.TryParse(quick, out var qm, out var qk) && !Native.RegisterHotKey(_hwnd, QuickHotkeyId, qm | 0x4000, qk))
+            ShowToast($"{quick} kullanılıyor. Hızlı erişim tuşunu Ayarlar > Davranış'tan değiştirin.");
         if (!Hotkeys.TryParse(Settings.Hotkey, out var mods, out var vk))
         { ShowToast("Kısayol tuşu anlaşılamadı: " + Settings.Hotkey); return; }
         if (!Native.RegisterHotKey(_hwnd, HotkeyId, mods | 0x4000, vk))
@@ -416,7 +464,7 @@ public partial class MainWindow : Window
         // Pencerenin alttaki seffaf payi ekran disina tasabilir; dolap zemine kadar iner.
         var slack = (int)(Scene.BottomSlack * scale * dpi);
         int y = (int)baseY - (h - slack);
-        y = Math.Clamp(y, wa.Top - h / 4, Math.Max(wa.Top, wa.Bottom - h + slack));
+        y = Math.Clamp(y, wa.Top, Math.Max(wa.Top, wa.Bottom - h + slack));
         x = Math.Clamp(x, wa.Left, Math.Max(wa.Left, wa.Right - w));
         Scroller.MaxHeight = Math.Max(120, wa.Height / dpi / scale);
         Native.SetWindowPos(_hwnd, IntPtr.Zero, x, y, w, h, Native.SWP_NOZORDER | Native.SWP_NOACTIVATE);
@@ -528,7 +576,8 @@ public partial class MainWindow : Window
     // ---------- klavye ----------
     void Window_PreviewKeyDown(object s, KeyEventArgs e)
     {
-        if (e.Key == Key.F && Keyboard.Modifiers == ModifierKeys.Control) { ShowSearch(); e.Handled = true; }
+        if (e.Key == Key.Z && Keyboard.Modifiers == ModifierKeys.Control && Keyboard.FocusedElement is not TextBox && !ModalOpen) { Undo_Click(s, e); e.Handled = true; }
+        else if (e.Key == Key.F && Keyboard.Modifiers == ModifierKeys.Control) { OpenQuickAccess(); e.Handled = true; }
         else if (e.Key == Key.Escape)
         {
             if (ModalOpen) CancelModal();
@@ -539,7 +588,7 @@ public partial class MainWindow : Window
     }
 
     // Arama dugmesi ac/kapa calisir.
-    void Search_Click(object s, RoutedEventArgs e) { if (_searchOpen) CancelModal(); else ShowSearch(); }
+    void Search_Click(object s, RoutedEventArgs e) => OpenQuickAccess();
     void Settings_Click(object s, RoutedEventArgs e) => OpenSettings();
     async void AddCategory_Click(object s, RoutedEventArgs e) => await AddDrawer();
     async void AddShortcut_Click(object s, RoutedEventArgs e) => await EditShortcut(null, Cat(s));
@@ -548,10 +597,11 @@ public partial class MainWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _closing = true;
+        _sortTimer?.Stop(); _sortCancel.Cancel();
         _toastTimer.Stop(); _dragOpenTimer.Stop(); _hideTimer.Stop(); _smartTimer?.Stop();
         foreach (var id in _watchers.Keys.ToArray()) StopWatcher(id);
-        if (_hwnd != IntPtr.Zero) Native.UnregisterHotKey(_hwnd, HotkeyId);
-        _settingsWin?.Close(); _settingsWin = null;
+        if (_hwnd != IntPtr.Zero) { Native.UnregisterHotKey(_hwnd, HotkeyId); Native.UnregisterHotKey(_hwnd, QuickHotkeyId); }
+        _settingsWin?.Close(); _settingsWin = null; _quickWindow?.Close(); _quickWindow = null;
         base.OnClosed(e);
     }
     public void OpenSettings()
