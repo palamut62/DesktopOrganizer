@@ -11,6 +11,8 @@
   <img alt="Version" src="https://img.shields.io/badge/version-0.1.0-2563EB">
 </p>
 
+<p align="center"><img src="docs/demo.gif" alt="Demo: opening a drawer, lifting a shortcut card, rotating the cabinet in 3D and switching from Metal to Block theme" width="460"></p>
+
 <p align="center"><img src="docs/screenshot.png" alt="Metal and Block themed cabinets with an open drawer" width="900"></p>
 
 ## Table of Contents
