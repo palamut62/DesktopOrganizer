@@ -16,7 +16,9 @@ public sealed class AssistantWindow : Window
     readonly CancellationTokenSource _cancel = new();
     readonly OpenRouterClient _client;
     readonly PasswordBox _key = new() { Width = 230, Margin = new(4) };
-    readonly ComboBox _models = new() { DisplayMemberPath = "Label", IsEditable = true, IsTextSearchEnabled = true, Margin = new(0, 5, 0, 5) };
+    readonly ComboBox _models = new() { DisplayMemberPath = "Label", Margin = new(0, 5, 0, 5), MaxDropDownHeight = 420 };
+    readonly TextBox _search = new() { Margin = new(0, 5, 0, 0) };
+    List<RouterModel> _all = [];
     readonly TextBlock _modelInfo = new() { TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightSteelBlue };
     readonly TextBox _prompt = new() { AcceptsReturn = true, Height = 70, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     readonly TextBox _result = new() { IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
@@ -42,7 +44,10 @@ public sealed class AssistantWindow : Window
         var keys = new WrapPanel(); keys.Children.Add(new TextBlock { Text = "API anahtarı", VerticalAlignment = VerticalAlignment.Center }); keys.Children.Add(_key);
         keys.Children.Add(Button("Anahtarı kaydet", () => Safe(() => { AssistantCredentials.Save(_key.Password); _key.Clear(); _status.Text = "Anahtar Windows Kimlik Bilgileri Yöneticisi'ne kaydedildi."; })));
         keys.Children.Add(Button("Anahtarı kaldır", () => { AssistantCredentials.Delete(); _key.Clear(); _status.Text = "Kayıtlı anahtar kaldırıldı."; })); top.Children.Add(keys);
-        top.Children.Add(new TextBlock { Text = "Model (arama için yazabilirsiniz)", Margin = new(0, 6, 0, 0) }); top.Children.Add(_models); top.Children.Add(_modelInfo);
+        top.Children.Add(new TextBlock { Text = "Model ara (ad veya kimlik, ör. claude, gpt, gemini, free)", Margin = new(0, 6, 0, 0) });
+        top.Children.Add(_search); top.Children.Add(_models); top.Children.Add(_modelInfo);
+        _search.TextChanged += (_, _) => ShowModels();
+        System.Windows.Automation.AutomationProperties.SetName(_search, "Model ara");
         var controls = new WrapPanel();
         _refresh = Button("Modelleri yenile", async () => await LoadModels(true)); controls.Children.Add(_refresh);
         _test = Button("Modeli test et", async () => await Generate(true)); controls.Children.Add(_test); top.Children.Add(controls);
@@ -82,7 +87,7 @@ public sealed class AssistantWindow : Window
         if (_busy) return; Busy(true);
         try
         {
-            List<RouterModel>? models = null; bool cached = false;
+            List<RouterModel>? models = null; bool cached = false; string? networkError = null;
             if (!force && File.Exists(_cache) && DateTime.UtcNow - File.GetLastWriteTimeUtc(_cache) < TimeSpan.FromHours(24))
                 try { models = JsonSerializer.Deserialize<List<RouterModel>>(await File.ReadAllTextAsync(_cache, _cancel.Token)); cached = true; } catch (JsonException) { }
             if (models == null)
@@ -98,15 +103,32 @@ public sealed class AssistantWindow : Window
                     if (_cancel.IsCancellationRequested) return;
                     if (!File.Exists(_cache)) throw;
                     models = JsonSerializer.Deserialize<List<RouterModel>>(await File.ReadAllTextAsync(_cache, _cancel.Token)); cached = true;
+                    networkError = ex.Message;
                 }
             }
-            _models.ItemsSource = models;
-            _models.SelectedItem = models?.FirstOrDefault(m => m.Id == _store.LoadUsability().AssistantModel);
-            _status.Text = cached ? "Önbellekteki model listesi kullanılıyor. Güncel liste için Yenile." : "Model listesi OpenRouter'dan yenilendi. Bir model seçin.";
+            _all = models ?? [];
+            ShowModels();
+            var age = DateTime.UtcNow - File.GetLastWriteTimeUtc(_cache);
+            var ageText = age.TotalHours >= 1 ? $"{(int)age.TotalHours} sa önce" : $"{Math.Max(1, (int)age.TotalMinutes)} dk önce";
+            _status.Text = $"{_all.Count} model ({_all.Count(m => m.Structured)} tanesi bu uygulamayla çalışır). "
+                + (networkError != null ? $"OpenRouter'a ulaşılamadı ({networkError}); {ageText} kaydedilen liste gösteriliyor."
+                   : cached ? $"Önbellekten ({ageText} güncellendi, 24 saat geçerli). Güncel liste için Modelleri yenile."
+                   : "Liste OpenRouter'dan yenilendi ve önbelleğe kaydedildi.");
         }
         catch (Exception ex) { if (!_cancel.IsCancellationRequested) _status.Text = "Model listesi yüklenemedi: " + ex.Message; }
         finally { if (!_cancel.IsCancellationRequested) Busy(false); }
     }
+    /// <summary>Aramaya gore listeyi daraltir; secili model listede kaldikca korunur.</summary>
+    void ShowModels()
+    {
+        var q = _search.Text.Trim();
+        var list = q.Length == 0 ? _all : _all.Where(m => m.Label.Contains(q, StringComparison.OrdinalIgnoreCase)).ToList();
+        var selectedId = (_models.SelectedItem as RouterModel)?.Id ?? _store.LoadUsability().AssistantModel;
+        _models.ItemsSource = list;
+        _models.SelectedItem = list.FirstOrDefault(m => m.Id == selectedId);
+        if (q.Length > 0 && _models.SelectedItem == null) _modelInfo.Text = $"{list.Count} model eşleşti; listeden seçin.";
+    }
+
     async Task Generate(bool test)
     {
         if (_busy) return;

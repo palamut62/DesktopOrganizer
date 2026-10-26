@@ -103,4 +103,20 @@ public class AssistantTests
         Assert.Throws<DolapException>(() => DesktopClassification.Validate(valid, [], s.GetCategories()));
         Assert.Throws<DolapException>(() => DesktopClassification.Validate(new("", [valid.Actions[0], valid.Actions[0]]), [item], s.GetCategories()));
     }
+
+    [Fact]
+    public void ModelListSurvivesMalformedEntriesAndShowsVariablePrices()
+    {
+        var models = OpenRouterClient.ParseModels("""
+            {"data":[
+            {"id":"a/structured","name":"Zeta","context_length":128000,"pricing":{"prompt":"-1","completion":"0"},"supported_parameters":["tools","structured_outputs"]},
+            {"id":"b/plain","context_length":null,"supported_parameters":null},
+            {"name":"kimliksiz"},
+            {"id":"c/odd","name":"Alfa","context_length":"8k","pricing":"yok"}]}
+            """);
+        Assert.Equal(["Alfa", "b/plain", "Zeta"], models.Select(m => m.Name));
+        var z = models[2];
+        Assert.True(z.Structured); Assert.Contains("değişken", z.Details); Assert.Contains("ücretsiz", z.Details);
+        Assert.Contains("kullanılamaz", models[0].Label); Assert.Equal(0, models[0].Context);
+    }
 }

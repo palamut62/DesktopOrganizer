@@ -8,8 +8,9 @@ namespace Dolap.Core;
 
 public sealed record RouterModel(string Id, string Name, int Context, decimal InputPrice, decimal OutputPrice, bool Structured)
 {
-    public string Label => $"{Name} ({Id})";
-    public string Details => $"Bağlam: {Context:N0} · 1M token giriş: ${InputPrice * 1000000:0.######} / çıkış: ${OutputPrice * 1000000:0.######} · JSON şeması: {(Structured ? "var" : "yok")}";
+    public string Label => $"{Name} ({Id})" + (Structured ? "" : " · bu uygulamada kullanılamaz");
+    static string Price(decimal p) => p < 0 ? "değişken" : p == 0 ? "ücretsiz" : "$" + (p * 1000000).ToString("0.######", CultureInfo.InvariantCulture);
+    public string Details => $"Bağlam: {Context:N0} · 1M token giriş: {Price(InputPrice)} / çıkış: {Price(OutputPrice)} · JSON şeması: {(Structured ? "var" : "yok (plan için gerekli)")}";
 }
 public sealed record RouterResult(AssistantPlan Plan, TimeSpan Elapsed, decimal? Cost);
 
@@ -25,13 +26,17 @@ public sealed class OpenRouterClient(HttpClient http, Func<string> readKey)
     public static List<RouterModel> ParseModels(string json)
     {
         using var doc = JsonDocument.Parse(json);
+        // Tek bozuk kayit tum listeyi dusurmesin: kimliksiz kayit atlanir, eksik alanlar varsayilan alir.
         return doc.RootElement.GetProperty("data").EnumerateArray().Select(m =>
         {
-            var parameters = m.TryGetProperty("supported_parameters", out var p) ? p.EnumerateArray().Select(x => x.GetString()).ToArray() : [];
-            var pricing = m.GetProperty("pricing");
-            decimal Price(string name) => pricing.TryGetProperty(name, out var v) && decimal.TryParse(v.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var n) ? n : 0;
-            return new RouterModel(m.GetProperty("id").GetString()!, m.GetProperty("name").GetString()!, m.GetProperty("context_length").GetInt32(), Price("prompt"), Price("completion"), parameters.Contains("structured_outputs"));
-        }).OrderBy(m => m.Name).ToList();
+            if (!m.TryGetProperty("id", out var id) || id.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(id.GetString())) return null;
+            var parameters = m.TryGetProperty("supported_parameters", out var p) && p.ValueKind == JsonValueKind.Array ? p.EnumerateArray().Select(x => x.ToString()).ToArray() : [];
+            var hasPricing = m.TryGetProperty("pricing", out var pricing) && pricing.ValueKind == JsonValueKind.Object;
+            decimal Price(string name) => hasPricing && pricing.TryGetProperty(name, out var v) && decimal.TryParse(v.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var n) ? n : 0;
+            var name = m.TryGetProperty("name", out var nm) && nm.ValueKind == JsonValueKind.String ? nm.GetString()! : id.GetString()!;
+            var context = m.TryGetProperty("context_length", out var c) && c.ValueKind == JsonValueKind.Number && c.TryGetInt32(out var ctx) ? ctx : 0;
+            return new RouterModel(id.GetString()!, name, context, Price("prompt"), Price("completion"), parameters.Contains("structured_outputs"));
+        }).OfType<RouterModel>().OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     public async Task<RouterResult> Plan(string model, string prompt, string state, CancellationToken token)
