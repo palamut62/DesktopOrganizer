@@ -2,12 +2,15 @@ namespace Dolap.Core;
 
 public sealed partial class CollectionStore
 {
-    sealed record ShortcutEdit(string Label, Dictionary<Guid, Shortcut?> Before, Dictionary<Guid, Shortcut?> After);
+    sealed record ShortcutEdit(string Label, Dictionary<Guid, Shortcut?> Before, Dictionary<Guid, Shortcut?> After, Action? Revert);
     readonly List<ShortcutEdit> _shortcutUndo = [];
     public string? UndoLabel => _shortcutUndo.LastOrDefault()?.Label;
 
     /// <summary>One user action, one transaction and one undo entry. Session-local, at most 30 actions.</summary>
-    public void EditShortcuts(string label, Action action)
+    public void EditShortcuts(string label, Action action) => EditShortcuts(label, () => { action(); return null; });
+
+    /// <summary>action kayit disi yan etkisini (tasinan dosya) geri alan islemi dondurur; geri almada DB'den once calisir.</summary>
+    public void EditShortcuts(string label, Func<Action?> action)
     {
         lock (_gate)
         {
@@ -15,12 +18,12 @@ public sealed partial class CollectionStore
             Tx(() =>
             {
                 var before = GetShortcuts().ToDictionary(s => s.Id);
-                action();
+                var revert = action();
                 var after = GetShortcuts().ToDictionary(s => s.Id);
                 var changed = before.Keys.Union(after.Keys).Where(id => before.GetValueOrDefault(id) != after.GetValueOrDefault(id)).ToArray();
                 if (changed.Length > 0) edit = new(label,
                     changed.ToDictionary(id => id, id => before.GetValueOrDefault(id)),
-                    changed.ToDictionary(id => id, id => after.GetValueOrDefault(id)));
+                    changed.ToDictionary(id => id, id => after.GetValueOrDefault(id)), revert);
             });
             if (edit == null) return;
             _shortcutUndo.Add(edit);
@@ -44,6 +47,7 @@ public sealed partial class CollectionStore
                     throw new DolapException("Bu öğeler daha sonra değişti; diğer değişiklikleri korumak için geri alınamadı.");
                 var total = current.Count - edit.After.Values.Count(s => s != null) + edit.Before.Values.Count(s => s != null);
                 if (total > MaxShortcuts) throw new DolapException("Geri alma kısayol sınırını aşar.");
+                edit.Revert?.Invoke();
                 foreach (var id in edit.Before.Keys) Exec("DELETE FROM shortcuts WHERE id=$i", ("$i", id.ToString()));
                 foreach (var s in edit.Before.Values.OfType<Shortcut>()) Insert(s);
             });

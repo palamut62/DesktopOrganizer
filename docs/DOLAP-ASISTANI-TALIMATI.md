@@ -10,9 +10,10 @@ Yeni dosya önce güvenilir, yerel bir Gelenler görünümünde bulunmalı. Yapa
 ağ kesilse veya API kredisi bitse bile dosyaya ulaşılabilmeli.
 
 Örnek: `NusaSetup.zip` masaüstüne indirildiğinde **Masaüstüne Gelenler** çekmecesinde
-görünür. Dosya fiziksel olarak masaüstünde kalır. OpenRouter otomatik sınıflandırması
-açıksa mevcut normal çekmecelerden uygun olana ayrıca bir kısayol eklenebilir.
-Bu işlem arşivi açmaz, kurulum çalıştırmaz veya ZIP içeriğini okumaz.
+görünür. OpenRouter otomatik yerleştirmesi açıksa model uygun normal çekmeceyi seçer;
+dosya `Belgeler\Masaüstü Dolabı\<çekmece>` klasörüne taşınır, masaüstü boşalır ve
+kısayol o çekmecede görünür. Bu işlem arşivi açmaz, kurulum çalıştırmaz veya ZIP
+içeriğini okumaz. Bildirimdeki **Geri al** dosyayı masaüstüne döndürür.
 
 ## Kullanım
 
@@ -24,10 +25,13 @@ Bu işlem arşivi açmaz, kurulum çalıştırmaz veya ZIP içeriğini okumaz.
    `structured_outputs` desteğini kontrol et. Bu yetenek olmadan işlem planı istenmez.
 5. **Modeli test et** ile uygulamanın gerçek JSON şemasını kullanarak bağlantıyı dene.
    Süre ve sağlayıcı bildirirse gerçek maliyet gösterilir. Test de API tüketebilir.
-6. İsteğini yaz, **Plan oluştur** düğmesine bas. İşlem listesini oku ve uygun bulursan
-   **Gösterilen planı uygula** düğmesine bas. Uygulamadan önce koleksiyon değişirse
-   plan reddedilir ve yeniden hazırlanması gerekir.
-7. İstersen **Ayarlar > Asistan > OpenRouter ile otomatik sınıflandır** seçeneğini aç.
+6. İsteğini yaz, **Plan oluştur** düğmesine bas. Güvenli planlar (oluşturma, taşıma,
+   adlandırma, görünüm ayarları; en fazla 8 işlem ve 15 öğe) hemen uygulanır ve
+   **Son işlemi geri al** ile tamamen geri alınır. Silme, çalışma seti geri yükleme,
+   kısayol açma, sistem ayarları (Windows ile başlat, simge gizleme, duvar kâğıdı, üstte
+   tutma) ve toplu değişiklikler önce gösterilir; **Gösterilen planı uygula** onaydır.
+   Uygulamadan önce koleksiyon değişirse plan reddedilir.
+7. İstersen **Ayarlar > Asistan > OpenRouter ile uygun çekmeceye otomatik yerleştir** seçeneğini aç.
    Bu ayrıca verilen bir izindir; varsayılan kapalıdır. Adlar sağlayıcıya iletilir,
    API maliyeti oluşabilir. Model ve anahtar olmadan açılamaz.
 
@@ -55,10 +59,12 @@ Bu işlem arşivi açmaz, kurulum çalıştırmaz veya ZIP içeriğini okumaz.
 - Model yalnızca bu gruptaki öğeleri mevcut **normal** çekmecelere önerebilir.
 - Yeni çekmece oluşturma, ayar değiştirme, silme veya program çalıştırma otomatik
   modda reddedilir. Herhangi bir geçersiz işlem varsa tüm öneri reddedilir.
-- Hedefte kısayol eklenir, Gelenler görünümü korunur. Aynı hedef ve parametre tekrar eklenmez.
+- Yalnızca doğrudan masaüstünde duran öğe taşınır: `Belgeler\Masaüstü Dolabı\<çekmece>`.
+  Aynı adlı dosya varsa üzerine yazılmaz, `ad (2).uzantı` kullanılır. Hiçbir dosya silinmez.
+- Kullanımda (açık/kilitli) veya yarım indirilmiş dosya taşınmaz, Gelenler'de kalır.
 - İstek sürerken değişmiş/silinmiş öğelere işlem yapılmaz. Özellik kapatılmışsa yanıt uygulanmaz.
 - Hata veya uygun kategori bulunamaması durumunda dosya Gelenler'de erişilebilir kalır.
-- Eklenen kısayollar oturumdaki **Geri al** ile kaldırılabilir; fiziksel dosyaya dokunulmaz.
+- **Geri al** (bildirim veya Ctrl+Z) dosyaları masaüstüne, kısayolları Gelenler'e döndürür.
 
 ## Etkileşimli asistanın yetkileri
 
@@ -71,19 +77,23 @@ Bu işlem arşivi açmaz, kurulum çalıştırmaz veya ZIP içeriğini okumaz.
 | Yerleşim | Kenar, yön, ölçek, normalize konum, açı, kilit ve manyetik hizalama. |
 | Davranış | Otomatik gizleme, üstte tutma, ses, animasyon, tepsi ve monitör. |
 | Masaüstü | Gelenler özelliği, simge gizleme ve temalı duvar kâğıdı ayarı. |
-| Çalışma setleri | Adlı seti kaydet ve mevcut seti uygula. |
+| Çalışma setleri | Adlı seti kaydet ve mevcut seti uygula (onaylı). |
+| Dosyalar | Gelenler'den normal çekmeceye taşınan masaüstü öğesini çekmece klasörüne taşı. |
+| Açma | Dolaptaki kısayolları aç (yalnızca onaylı plan). |
 
 Yetkiler yalnızca kodda tanımlanmış işlemlerdir. Genel terminal, PowerShell, Python,
-uzaktan kod, dosya içeriği okuma, fiziksel silme/taşıma, uygulama kurulumu veya modelin
+uzaktan kod, dosya içeriği okuma, fiziksel silme, masaüstü dışından dosya taşıma,
+rastgele program/komut çalıştırma, uygulama kurulumu veya modelin
 ürettiği adrese ağ isteği çalıştırma aracı yoktur. Tuş atama ve API anahtarı kullanıcı
 arayüzünden yönetilir; model bunları değiştiremez.
 
 Her etkileşimli plan önce ayrı, bellek içi bir veritabanında denenir. Gerçek uygulama
 değişmeden okunabilir bir önizleme hazırlanır. Onay sırasında mevcut durum kontrol
 edilir. İşlemler tek veritabanı transaction'ında uygulanır. Öncesinde
-`backups/asistan-oncesi-...json` yedeği oluşturulur. Dolap/çekmece/ayar değişikliklerinin
-tam geri dönüşü **Ayarlar > Veri > Yedekten geri yükle** ile yapılır; Ctrl+Z yalnızca
-desteklenen kısayol düzenlemelerinin oturum geçmişidir.
+`backups/asistan-oncesi-...json` yedeği ve bellek içi tam durum kopyası alınır.
+**Son işlemi geri al** dolap, çekmece, ayar ve kısayolları bu kopyaya döndürür, taşınan
+dosyaları masaüstüne geri koyar. Arada başka değişiklik olduysa geri alma reddedilir;
+o durumda **Ayarlar > Veri > Yedekten geri yükle** kullanılır.
 
 ## Asistanın çalışma talimatı
 
@@ -99,7 +109,8 @@ Asistan şu kurallara uymalıdır:
 4. Belirsizlik varsa soru sor ve boş işlem listesi döndür.
 5. Bir planda en fazla 20 işlem öner. Henüz oluşturulmamış nesne için kimlik uydurma;
    oluşturma sonrasında yeni durumla sonraki planı hazırla.
-6. Referans kaldırma ile fiziksel dosya silme arasındaki farkı açıkla.
+6. Referans kaldırma ile fiziksel dosya silme arasındaki farkı açıkla. Kullanıcı açmayı
+   istemedikçe launch önerme.
 7. Planı yapılmış gibi anlatma. Gerçek başarı bilgisi yalnızca uygulamanın yürütme sonucudur.
 8. İstenen işlem izinli değilse bunu söyle; benzer görünen başka bir işlemle aşmaya çalışma.
 9. Sadece bilgi isteyen kullanıcıya boş işlem listesiyle yanıt ver.
@@ -108,7 +119,8 @@ Asistan şu kurallara uymalıdır:
 
 Örnek kullanıcı talimatları:
 
-- "Masaüstüne Gelenler'deki ZIP kısayollarını Arşiv çekmecesine yerleştir."
+- "Masaüstüne Gelenler'deki ZIP dosyalarını Arşiv çekmecesine at." (dosyalar taşınır)
+- "Geliştirme çekmecesindeki VS Code ve Terminal'i aç." (onay ister)
 - "İş dolabını metal yap, ses seviyesini 30'a indir ve yerleşimini kilitle."
 - "Geliştirme dolabına Belgeler adlı bir çekmece ekle."
 - "Bu düzeni Akşam Çalışması adıyla kaydet."

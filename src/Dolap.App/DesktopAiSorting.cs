@@ -24,6 +24,25 @@ public partial class MainWindow
         _sortTimer.Stop(); _sortTimer.Start();
     }
 
+    static string DrawerRoot => System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Masaüstü Dolabı");
+
+    /// <summary>Yalniz dogrudan masaustundeki ogeyi cekmecenin klasorune tasir ve kisayolu yeni yola baglar.</summary>
+    internal FileMove? Relocate(Shortcut s, Category target)
+    {
+        if (s.Kind == ShortcutKind.Url || target.LinkedFolder != null) return null;
+        var src = s.SourceLinkPath ?? s.Target;
+        try
+        {
+            var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            if (!string.Equals(System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(src)), desktop, StringComparison.OrdinalIgnoreCase)) return null;
+        }
+        catch (Exception e) when (e is ArgumentException or NotSupportedException or System.IO.PathTooLongException) { return null; }
+        if (DesktopMover.Move(src, DesktopMover.DrawerFolder(DrawerRoot, target.Name)) is not { } m) return null;
+        try { _store.UpdateShortcut(s.Id, ShortcutFactory.FromPath(m.To) with { DisplayName = s.DisplayName }); }
+        catch { DesktopMover.Undo(m); throw; }
+        return m;
+    }
+
     async Task SortDesktop()
     {
         if (_sorting || _closing) return;
@@ -51,22 +70,30 @@ public partial class MainWindow
                 Shortcuts = items.Select(s => new { s.Id, s.DisplayName, s.Kind, Extension = System.IO.Path.GetExtension(s.Target) })
             });
             var result = await client.Plan(prefs.AssistantModel,
-                "Yeni masaüstü öğelerini mevcut normal çekmecelere sınıflandır. Yalnızca move_shortcuts işlemleri öner; uygun hedef yoksa hiçbir işlem önerme. Kaynak dosyalara dokunulmaz, Gelenler görünümü korunarak hedef çekmeceye referans eklenir.", state, _sortCancel.Token);
+                "Yeni masaüstü öğelerini mevcut normal çekmecelere sınıflandır. Yalnızca move_shortcuts işlemleri öner; uygun hedef yoksa o öğe için işlem önerme. Uygulama taşınan öğeyi çekmecenin klasörüne koyar.", state, _sortCancel.Token);
             if (_closing || !_store.LoadUsability().AutoClassifyDesktop) return;
             var assignments = DesktopClassification.Validate(result.Plan, items, _store.GetCategories());
             var current = _store.GetShortcuts().ToDictionary(s => s.Id);
-            int added = 0;
-            _store.EditShortcuts("Akıllı masaüstü sınıflandırması", () =>
+            var cats = _store.GetCategories().ToDictionary(c => c.Id);
+            var moves = new List<FileMove>(); var kept = 0;
+            try
             {
-                foreach (var assignment in assignments)
+                _store.EditShortcuts("Akıllı masaüstü yerleştirme", () =>
                 {
-                    var source = items.Single(s => s.Id == assignment.ShortcutId);
-                    if (!current.TryGetValue(source.Id, out var now) || source != now) continue;
-                    if (_store.AddShortcut(assignment.CategoryId, new(source.DisplayName, source.Kind, source.Target, source.SourceLinkPath, source.Arguments, source.WorkingDirectory)) != null) added++;
-                }
-            });
+                    foreach (var assignment in assignments)
+                    {
+                        var source = items.Single(s => s.Id == assignment.ShortcutId);
+                        if (!current.TryGetValue(source.Id, out var now) || source != now) continue;
+                        // Tasinamayan (acik/kullanimda) oge Gelenler'de kalir; yarim tasima olmaz.
+                        if (Relocate(now, cats[assignment.CategoryId]) is not { } m) { kept++; continue; }
+                        moves.Add(m); _store.MoveShortcut(source.Id, assignment.CategoryId);
+                    }
+                    return moves.Count == 0 ? null : () => { foreach (var m in Enumerable.Reverse(moves)) DesktopMover.Undo(m); };
+                });
+            }
+            catch { foreach (var m in Enumerable.Reverse(moves)) DesktopMover.Undo(m); throw; }
             RefreshCollection();
-            ShowToast($"{added} kısayol akıllıca yerleştirildi. Dosyalar masaüstünde, Gelenler görünümü korunuyor.", undo: added > 0);
+            ShowToast($"{moves.Count} öğe çekmece klasörüne taşındı (Belgeler\\Masaüstü Dolabı)." + (kept > 0 ? $" {kept} öğe kullanımda, Gelenler'de kaldı." : ""), undo: moves.Count > 0);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or DolapException or JsonException or InvalidOperationException or Microsoft.Data.Sqlite.SqliteException)
         { if (!_closing) ShowToast("Akıllı yerleştirme yapılamadı; dosyalar Gelenler'de duruyor. " + ex.Message); }

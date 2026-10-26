@@ -21,8 +21,11 @@ public sealed class AssistantWindow : Window
     readonly TextBox _prompt = new() { AcceptsReturn = true, Height = 70, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     readonly TextBox _result = new() { IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightSteelBlue, Margin = new(0, 6, 0, 0) };
-    readonly Button _apply, _generate, _test, _refresh;
+    readonly Button _apply, _generate, _test, _refresh, _undo;
     AssistantPlan? _plan;
+    IDisposable? _checkpoint;
+    List<FileMove> _moves = [];
+    string _afterState = "";
     string _state = "";
     bool _busy;
     readonly string _cache = Path.Combine(Paths.Data, "openrouter-models.json");
@@ -35,7 +38,7 @@ public sealed class AssistantWindow : Window
         Background = (Brush)Application.Current.FindResource("CardBrush"); Foreground = Brushes.White;
         var root = new DockPanel { Margin = new(18) }; var top = new StackPanel();
         top.Children.Add(new TextBlock { Text = "Dolap Asistanı", FontSize = 22, FontWeight = FontWeights.SemiBold });
-        top.Children.Add(new TextBlock { Text = "İstek gönderildiğinde öğe adları ve dolap ayarları OpenRouter'a iletilir. Dosya içeriği ve tam dosya yolları gönderilmez. Model işlemleri önce önerir; Uygula demeden değişiklik yapmaz.", TextWrapping = TextWrapping.Wrap, Margin = new(0, 8, 0, 8) });
+        top.Children.Add(new TextBlock { Text = "İstek gönderildiğinde öğe adları ve dolap ayarları OpenRouter'a iletilir. Dosya içeriği ve tam dosya yolları gönderilmez. Güvenli işlemler hemen uygulanır ve geri alınabilir. Silme, program açma, sistem ayarları ve toplu değişiklikler önce onay ister.", TextWrapping = TextWrapping.Wrap, Margin = new(0, 8, 0, 8) });
         var keys = new WrapPanel(); keys.Children.Add(new TextBlock { Text = "API anahtarı", VerticalAlignment = VerticalAlignment.Center }); keys.Children.Add(_key);
         keys.Children.Add(Button("Anahtarı kaydet", () => Safe(() => { AssistantCredentials.Save(_key.Password); _key.Clear(); _status.Text = "Anahtar Windows Kimlik Bilgileri Yöneticisi'ne kaydedildi."; })));
         keys.Children.Add(Button("Anahtarı kaldır", () => { AssistantCredentials.Delete(); _key.Clear(); _status.Text = "Kayıtlı anahtar kaldırıldı."; })); top.Children.Add(keys);
@@ -49,8 +52,9 @@ public sealed class AssistantWindow : Window
         _generate = Button("Plan oluştur", async () => await Generate(false)); actions.Children.Add(_generate);
         _apply = Button("Gösterilen planı uygula", Apply); _apply.IsEnabled = false; actions.Children.Add(_apply);
         actions.Children.Add(Button("Planı iptal et", () => { _plan = null; _apply.IsEnabled = false; _result.Clear(); }));
+        _undo = Button("Son işlemi geri al", Undo); _undo.IsEnabled = false; actions.Children.Add(_undo);
         bottom.Children.Add(actions); bottom.Children.Add(_status); DockPanel.SetDock(bottom, Dock.Bottom); root.Children.Add(bottom);
-        var planTitle = new TextBlock { Text = "Önerilen plan (uygulanmadan önce burada gösterilir)", Margin = new(0, 10, 0, 0) };
+        var planTitle = new TextBlock { Text = "Plan ve sonuç", Margin = new(0, 10, 0, 0) };
         DockPanel.SetDock(planTitle, Dock.Top); root.Children.Add(planTitle);
         _result.Margin = new(0, 5, 0, 8); root.Children.Add(_result); Content = root;
         _models.SelectionChanged += (_, _) =>
@@ -60,7 +64,7 @@ public sealed class AssistantWindow : Window
             _plan = null; _apply.IsEnabled = false;
         };
         if (loadModels) Loaded += async (_, _) => await LoadModels(false);
-        Closed += (_, _) => { _cancel.Cancel(); _http.Dispose(); };
+        Closed += (_, _) => { _cancel.Cancel(); _http.Dispose(); _checkpoint?.Dispose(); };
     }
     static Button Button(string text, Action action)
     {
@@ -127,18 +131,59 @@ public sealed class AssistantWindow : Window
                 _result.Text = result.Plan.Message + "\n\n" + string.Join("\n", steps.Select((s, i) => $"{i + 1}. {s}"));
             }
             _status.Text = $"Süre: {result.Elapsed.TotalSeconds:0.0} sn · Maliyet: {(result.Cost is { } cost ? "$" + cost.ToString("0.######") : "sağlayıcı bildirmedi")}";
+            if (_plan is { Actions.Count: > 0 } plan)
+            {
+                if (AssistantProtocol.NeedsConfirmation(plan)) _status.Text += "\nSilme, açma, sistem ayarı veya toplu değişiklik içeriyor: kontrol edip 'Gösterilen planı uygula'ya basın.";
+                else ApplyPlan();
+            }
         }
         catch (Exception ex) { if (!_cancel.IsCancellationRequested) _status.Text = "İşlem uygulanmadı: " + ex.Message; }
         finally { if (!_cancel.IsCancellationRequested) Busy(false); }
     }
-    void Apply() => Safe(() =>
+    void Apply() => Safe(() => { if (!_busy && _plan != null) ApplyPlan(); });
+
+    void ApplyPlan()
     {
-        if (_busy || _plan == null) return;
+        var plan = _plan!;
         if (_store.AssistantState() != _state) { _plan = null; _apply.IsEnabled = false; throw new DolapException("Koleksiyon değişti; güncel durumla yeni bir plan oluşturun."); }
         var backup = Path.Combine(Paths.Backups, $"asistan-oncesi-{DateTime.Now:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}.json");
         Directory.CreateDirectory(Paths.Backups); _store.ExportJson(backup);
-        _store.ApplyAssistant(_plan); _plan = null; _apply.IsEnabled = false;
+        var inbox = _store.LoadUsability().DesktopInboxCategory;
+        var before = _store.GetShortcuts().ToDictionary(s => s.Id);
+        var checkpoint = _store.Checkpoint();
+        try { _store.ApplyAssistant(plan); } catch { checkpoint.Dispose(); throw; }
+        _checkpoint?.Dispose(); _checkpoint = checkpoint; _moves = [];
+        _plan = null; _apply.IsEnabled = false;
+        // Gelenler'den normal cekmeceye tasinan masaustu ogesi fiziksel olarak cekmecenin klasorune gider.
+        var kept = 0;
+        var cats = _store.GetCategories().ToDictionary(c => c.Id);
+        foreach (var id in plan.Actions.Where(a => a.Kind == "move_shortcuts").SelectMany(a => a.Ids))
+        {
+            if (!Guid.TryParse(id, out var sid) || !before.TryGetValue(sid, out var old) || old.CategoryId != inbox) continue;
+            var now = _store.GetShortcuts().FirstOrDefault(s => s.Id == sid);
+            if (now == null || !cats.TryGetValue(now.CategoryId, out var cat) || cat.LinkedFolder != null) continue;
+            if (_host.Relocate(now, cat) is { } m) _moves.Add(m); else kept++;
+        }
+        // launch yalniz onay isteyen planda bulunur (NeedsConfirmation); Uygula tiklamasi onaydir.
+        var opened = new List<string>();
+        foreach (var id in plan.Actions.Where(a => a.Kind == "launch").SelectMany(a => a.Ids).Distinct())
+            if (Guid.TryParse(id, out var sid) && _store.GetShortcuts().FirstOrDefault(s => s.Id == sid) is { } sc)
+                opened.Add(ShellLauncher.Launch(sc).Message);
         (Application.Current as App)?.RefreshAfterAssistant();
-        _status.Text = "Plan uygulandı. Tam geri dönüş için Ayarlar > Veri > Yedekten geri yükle: " + backup;
+        _afterState = _store.AssistantState(); _undo.IsEnabled = true;
+        _status.Text = "Uygulandı." + (_moves.Count > 0 ? $" {_moves.Count} dosya Belgeler\\Masaüstü Dolabı altına taşındı." : "")
+            + (kept > 0 ? $" {kept} dosya kullanımda olduğu için masaüstünde kaldı." : "")
+            + (opened.Count > 0 ? " " + string.Join(" ", opened) : "") + "\nGeri almak için 'Son işlemi geri al'. Yedek: " + backup;
+    }
+
+    void Undo() => Safe(() =>
+    {
+        if (_checkpoint == null) return;
+        if (_store.AssistantState() != _afterState)
+            throw new DolapException("Asistandan sonra başka değişiklik oldu; geri dönmek için Ayarlar > Veri > Yedekten geri yükle.");
+        foreach (var m in Enumerable.Reverse(_moves)) DesktopMover.Undo(m);
+        _store.Restore(_checkpoint); _checkpoint.Dispose(); _checkpoint = null; _moves = []; _undo.IsEnabled = false;
+        (Application.Current as App)?.RefreshAfterAssistant();
+        _status.Text = "Asistanın son işlemi geri alındı; taşınan dosyalar masaüstüne döndü.";
     });
 }
