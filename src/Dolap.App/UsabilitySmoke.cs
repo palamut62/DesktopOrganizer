@@ -1,6 +1,8 @@
 using System.IO;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using Dolap.Core;
@@ -80,9 +82,31 @@ public partial class MainWindow
         {
             Check(FindButtons(assistant).Single(b => b.Content as string == "Gösterilen planı uygula").IsEnabled == false,
                 "Assistant cannot apply changes before a validated plan exists");
+            assistant.SetModels([new("anthropic/claude-x", "Anthropic: Claude X", 200000, 0.000003m, 0.000015m, true),
+                new("openai/gpt-y:free", "OpenAI: GPT Y (free)", 128000, 0, 0, true), new("z/plain", "Z Plain", 8000, 0, 0, false)]);
+            var list = FindVisual<ListBox>(assistant).Single(l => l.DisplayMemberPath == "Label");
+            var search = FindVisual<TextBox>(assistant).First(t => AutomationProperties.GetName(t) == "Model ara");
+            await Task.Delay(100);
+            Check(list.Items.Count == 3 && list.IsVisible, "Assistant shows every fetched model without opening a dropdown");
+            search.Text = "CLAUDE"; await Task.Delay(50);
+            Check(list.Items.Count == 1, "Model search filters by name or id, case-insensitive");
+            search.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, PresentationSource.FromVisual(search)!, 0, Key.Enter) { RoutedEvent = Keyboard.PreviewKeyDownEvent });
+            Check(list.SelectedItem is RouterModel { Id: "anthropic/claude-x" } && _store.LoadUsability().AssistantModel == "anthropic/claude-x",
+                "Enter in model search selects the first match and remembers it");
+            search.Text = ""; await Task.Delay(50);
+            Check(list.Items.Count == 3 && list.SelectedItem is RouterModel { Id: "anthropic/claude-x" }, "Clearing search keeps the chosen model selected");
             CaptureUsability(assistant, Path.Combine(output, "assistant.png"));
         }
         finally { assistant.Close(); }
+    }
+    static IEnumerable<T> FindVisual<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T t) yield return t;
+            foreach (var x in FindVisual<T>(child)) yield return x;
+        }
     }
 
     static void CaptureUsability(Window window, string file)

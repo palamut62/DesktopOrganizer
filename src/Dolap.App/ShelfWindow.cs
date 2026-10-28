@@ -114,6 +114,8 @@ public sealed class ShelfWindow : Window
             AutomationProperties.SetName(b, vm.Name + ", tepside");
             b.Click += (_, _) => (Application.Current as App)?.FirstWindow?.ShowToast(ShellLauncher.Launch(s).Message);
             b.ContextMenuOpening += (_, _) => BuildMenu(b.ContextMenu, s);
+            FileDragOut.Attach(b, () => s); // tepsiden baska uygulamaya surukle
+
             _items.Children.Add(b);
         }
     }

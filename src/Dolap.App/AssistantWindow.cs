@@ -16,7 +16,13 @@ public sealed class AssistantWindow : Window
     readonly CancellationTokenSource _cancel = new();
     readonly OpenRouterClient _client;
     readonly PasswordBox _key = new() { Width = 230, Margin = new(4) };
-    readonly ComboBox _models = new() { DisplayMemberPath = "Label", Margin = new(0, 5, 0, 5), MaxDropDownHeight = 420 };
+    // Acilir liste yerine hep gorunen liste: aramada sonuclar aninda gorunur, tikla/Enter ile secilir.
+    readonly ListBox _models = new()
+    {
+        DisplayMemberPath = "Label", Height = 170, Margin = new(0, 5, 0, 5),
+        Background = new SolidColorBrush(Color.FromRgb(0x10, 0x14, 0x18)), Foreground = Brushes.White,
+        BorderBrush = new SolidColorBrush(Color.FromRgb(0x3A, 0x42, 0x4C))
+    };
     readonly TextBox _search = new() { Margin = new(0, 5, 0, 0) };
     List<RouterModel> _all = [];
     readonly TextBlock _modelInfo = new() { TextWrapping = TextWrapping.Wrap, Foreground = Brushes.LightSteelBlue };
@@ -35,7 +41,7 @@ public sealed class AssistantWindow : Window
     public AssistantWindow(MainWindow host, bool loadModels = true)
     {
         _host = host; _store = host.Store; _client = new(_http, AssistantCredentials.Read);
-        Title = "Dolap Asistanı · OpenRouter"; Width = 800; Height = 760; MinWidth = 640; MinHeight = 580;
+        Title = "Dolap Asistanı · OpenRouter"; Width = 800; Height = 880; MinWidth = 640; MinHeight = 700;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Background = (Brush)Application.Current.FindResource("CardBrush"); Foreground = Brushes.White;
         var root = new DockPanel { Margin = new(18) }; var top = new StackPanel();
@@ -47,6 +53,14 @@ public sealed class AssistantWindow : Window
         top.Children.Add(new TextBlock { Text = "Model ara (ad veya kimlik, ör. claude, gpt, gemini, free)", Margin = new(0, 6, 0, 0) });
         top.Children.Add(_search); top.Children.Add(_models); top.Children.Add(_modelInfo);
         _search.TextChanged += (_, _) => ShowModels();
+        _search.PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key is not (System.Windows.Input.Key.Down or System.Windows.Input.Key.Enter) || _models.Items.Count == 0) return;
+            if (_models.SelectedIndex < 0) _models.SelectedIndex = 0;
+            if (e.Key == System.Windows.Input.Key.Down) (_models.ItemContainerGenerator.ContainerFromIndex(_models.SelectedIndex) as ListBoxItem)?.Focus();
+            e.Handled = true;
+        };
+        System.Windows.Automation.AutomationProperties.SetName(_models, "Modeller");
         System.Windows.Automation.AutomationProperties.SetName(_search, "Model ara");
         var controls = new WrapPanel();
         _refresh = Button("Modelleri yenile", async () => await LoadModels(true)); controls.Children.Add(_refresh);
@@ -106,8 +120,7 @@ public sealed class AssistantWindow : Window
                     networkError = ex.Message;
                 }
             }
-            _all = models ?? [];
-            ShowModels();
+            SetModels(models ?? []);
             var age = DateTime.UtcNow - File.GetLastWriteTimeUtc(_cache);
             var ageText = age.TotalHours >= 1 ? $"{(int)age.TotalHours} sa önce" : $"{Math.Max(1, (int)age.TotalMinutes)} dk önce";
             _status.Text = $"{_all.Count} model ({_all.Count(m => m.Structured)} tanesi bu uygulamayla çalışır). "
@@ -118,6 +131,8 @@ public sealed class AssistantWindow : Window
         catch (Exception ex) { if (!_cancel.IsCancellationRequested) _status.Text = "Model listesi yüklenemedi: " + ex.Message; }
         finally { if (!_cancel.IsCancellationRequested) Busy(false); }
     }
+    internal void SetModels(List<RouterModel> models) { _all = models; ShowModels(); }
+
     /// <summary>Aramaya gore listeyi daraltir; secili model listede kaldikca korunur.</summary>
     void ShowModels()
     {
@@ -126,7 +141,8 @@ public sealed class AssistantWindow : Window
         var selectedId = (_models.SelectedItem as RouterModel)?.Id ?? _store.LoadUsability().AssistantModel;
         _models.ItemsSource = list;
         _models.SelectedItem = list.FirstOrDefault(m => m.Id == selectedId);
-        if (q.Length > 0 && _models.SelectedItem == null) _modelInfo.Text = $"{list.Count} model eşleşti; listeden seçin.";
+        if (_models.SelectedItem != null) _models.ScrollIntoView(_models.SelectedItem);
+        else _modelInfo.Text = list.Count == 0 ? "Eşleşen model yok." : $"{list.Count} model listeleniyor; birine tıklayın (veya ↓ / Enter).";
     }
 
     async Task Generate(bool test)
