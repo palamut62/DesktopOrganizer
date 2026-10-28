@@ -137,6 +137,14 @@ public sealed class CabinetScene : Grid
             _rightDown = null; _rightRotated = false;
         };
         LostMouseCapture += (_, _) => { if (_dragRotating) EndRotate(); };
+        // Surukleme sahneden cikinca is kabuga devredilir: oge artik baska uygulamanin icine birakilabilir.
+        MouseLeave += (_, _) =>
+        {
+            if (!_reordering || _pressCard?.DataContext is not ShortcutVm vm) return;
+            var card = _pressCard;
+            CancelReorder();
+            FileDragOut.Start(card, vm.Model);
+        };
     }
 
     public void SetCategories(IEnumerable<CategoryVm> categories)
@@ -674,6 +682,14 @@ public sealed class CabinetScene : Grid
         if (_dropTarget != null) _dropTarget.Opacity = 1;
         _dropTarget = target;
         if (_dropTarget != null) _dropTarget.Opacity = .55; // birakilacak yer belli olsun
+    }
+
+    /// <summary>Siralamayi degistirmeden surukleme durumunu birakir (oge disariya suruklenirken).</summary>
+    void CancelReorder()
+    {
+        if (_dropTarget != null) _dropTarget.Opacity = 1;
+        _reordering = false; _pressCard = null; _dropTarget = null;
+        Mouse.OverrideCursor = null;
     }
 
     void EndReorder()
